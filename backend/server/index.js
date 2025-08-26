@@ -4,7 +4,7 @@ const http = require('http');
 const cors = require('cors');
 const { Server } = require('socket.io');
 const dotenv = require('dotenv');
-const { shuffleBag, generateCard, checkFigures } = require('./bingo');
+const { shuffleBag, generateCard, checkFigures } = require('./games/bingo');
 
 dotenv.config();
 
@@ -36,7 +36,22 @@ function createRoom() {
     drawn: [],
     timer: null,
   announceTimeout: null,
-    figuresClaimed: { corners: null, row: null, column: null, diagonal: null, border: null, full: null },
+    figuresClaimed: { 
+      // Cambio a estructura más detallada: figura -> { playerId, cardIndex, details }
+      corners: null, 
+      row: null, 
+      column: null, 
+      diagonal: null, 
+      border: null, 
+      full: null 
+    },
+    // Nueva estructura para figuras específicas por jugador y cartón
+    specificClaims: new Map(), // "playerId:cardIndex:figure" -> { playerId, cardIndex, figure, details }
+    // Nuevos campos para sistema de nueva partida
+    gameEnded: false,
+    playersReady: new Set(), // Set de socketIds listos para nueva partida
+    announcementQueue: [], // Cola de anuncios individuales
+    processingAnnouncements: false,
   };
   rooms.set(id, room);
   return room;
@@ -77,6 +92,9 @@ function broadcastRoomState(roomId) {
     drawn: room.drawn,
     lastBall: room.drawn[room.drawn.length - 1] || null,
     figuresClaimed: room.figuresClaimed,
+    specificClaims: Object.fromEntries(room.specificClaims), // Convertir Map a Object para JSON
+    gameEnded: room.gameEnded,
+    playersReady: Array.from(room.playersReady),
   });
 }
 
@@ -103,6 +121,10 @@ function startGame(roomId) {
   if (!room) return;
   room.started = true;
   room.paused = false;
+  room.gameEnded = false;
+  room.playersReady.clear();
+  room.announcementQueue = [];
+  room.processingAnnouncements = false;
   // reiniciar velocidad por si quedó algo previo
   room.speed = room.speed || 1;
   room.bag = shuffleBag();
@@ -114,6 +136,38 @@ function startGame(roomId) {
   broadcastRoomState(roomId);
   stopTimer(room);
   startTimerIfNeeded(room);
+}
+
+// Procesar cola de anuncios individuales
+function processAnnouncementQueue(room) {
+  if (room.processingAnnouncements || room.announcementQueue.length === 0) return;
+  
+  room.processingAnnouncements = true;
+  const announcement = room.announcementQueue.shift();
+  
+  // Pausar el juego durante el anuncio
+  room.paused = true;
+  stopTimer(room);
+  
+  // Enviar anuncio individual
+  io.to(room.id).emit('announcement', announcement);
+  
+  // Programar siguiente anuncio o reanudar juego
+  setTimeout(() => {
+    room.processingAnnouncements = false;
+    
+    if (room.announcementQueue.length > 0) {
+      // Continuar con el siguiente anuncio
+      processAnnouncementQueue(room);
+    } else {
+      // No hay más anuncios, reanudar juego si no terminó
+      if (!room.gameEnded) {
+        room.paused = false;
+        startTimerIfNeeded(room);
+        broadcastRoomState(room.id);
+      }
+    }
+  }, 2500); // 2.5 segundos por anuncio
 }
 
 function validateAndFlags(roomId, socketId, cardIndex, markedFromClient) {
@@ -161,6 +215,7 @@ function checkClaim(roomId, socketId, figure, cardIndex, markedFromClient) {
   broadcastRoomState(roomId);
   if (figure === 'full') {
     stopTimer(room);
+    room.gameEnded = true;
     io.to(roomId).emit('gameOver', { roomId, winner: socketId, figuresClaimed: room.figuresClaimed });
   }
   return { ok: true };
@@ -172,30 +227,89 @@ function autoClaim(roomId, socketId, cardIndex, markedFromClient) {
   const valid = validateAndFlags(roomId, socketId, cardIndex, markedFromClient);
   if (!valid.ok) return valid;
   const { flags } = valid;
+  
+  // Obtener información del jugador
+  const player = room.players.get(socketId) || {};
+  
   const newly = Object.keys(room.figuresClaimed)
     .filter(k => !room.figuresClaimed[k])
     .filter(k => flags[k]);
   if (newly.length === 0) return { ok: false, reason: 'no_new_figures' };
-  for (const f of newly) room.figuresClaimed[f] = socketId;
-  const player = room.players.get(socketId) || {};
-  // Pausar sorteo mientras dura el anuncio
-  stopTimer(room);
-  room.paused = true;
-  if (room.announceTimeout) { clearTimeout(room.announceTimeout); room.announceTimeout = null; }
-  const ANNOUNCE_MS = 3500;
-  io.to(roomId).emit('announcement', { roomId, playerId: socketId, playerName: player.name, playerAvatar: player.avatarUrl, figures: newly, cardIndex });
-  room.announceTimeout = setTimeout(() => {
-    room.paused = false;
-    startTimerIfNeeded(room);
-    broadcastRoomState(roomId);
-    room.announceTimeout = null;
-  }, ANNOUNCE_MS);
-  broadcastRoomState(roomId);
-  if (newly.includes('full')) {
-    stopTimer(room);
-    io.to(roomId).emit('gameOver', { roomId, winner: socketId, figuresClaimed: room.figuresClaimed });
+  
+  // Marcar figuras como completadas y registrar reclamaciones específicas
+  for (const f of newly) {
+    room.figuresClaimed[f] = socketId;
+    
+    // Registrar reclamación específica
+    const claimKey = `${socketId}:${cardIndex}:${f}`;
+    room.specificClaims.set(claimKey, {
+      playerId: socketId,
+      cardIndex: cardIndex,
+      figure: f,
+      playerName: player.name,
+      timestamp: Date.now()
+    });
   }
+  
+  // Crear anuncios individuales por prioridad
+  const priorityOrder = ['full', 'border', 'diagonal', 'corners', 'column', 'row'];
+  const sortedFigures = newly.sort((a, b) => {
+    return priorityOrder.indexOf(a) - priorityOrder.indexOf(b);
+  });
+  
+  // Agregar anuncios individuales a la cola
+  sortedFigures.forEach(figure => {
+    room.announcementQueue.push({
+      roomId,
+      playerId: socketId,
+      playerName: player.name,
+      playerAvatar: player.avatarUrl,
+      figures: [figure], // Solo una figura por anuncio
+      cardIndex
+    });
+  });
+  
+  // Verificar si el juego terminó
+  if (newly.includes('full')) {
+    room.gameEnded = true;
+    stopTimer(room);
+  }
+  
+  broadcastRoomState(roomId);
+  
+  // Procesar cola de anuncios
+  processAnnouncementQueue(room);
+  
+  // Si terminó el juego, enviar gameOver después de los anuncios
+  if (newly.includes('full')) {
+    setTimeout(() => {
+      io.to(roomId).emit('gameOver', { 
+        roomId, 
+        winner: socketId, 
+        figuresClaimed: room.figuresClaimed,
+        players: Array.from(room.players.entries()).map(([sid, p]) => ({
+          id: sid,
+          name: p.name,
+          avatarUrl: p.avatarUrl
+        }))
+      });
+    }, sortedFigures.length * 2500 + 1000); // Esperar a que terminen todos los anuncios
+  }
+  
   return { ok: true, figures: newly };
+}
+
+// Verificar si todos los jugadores están listos para nueva partida
+function checkAllPlayersReady(room) {
+  const totalPlayers = room.players.size;
+  const readyPlayers = room.playersReady.size;
+  
+  if (totalPlayers > 0 && readyPlayers === totalPlayers) {
+    // Todos están listos, iniciar nueva partida
+    setTimeout(() => {
+      startGame(room.id);
+    }, 1000);
+  }
 }
 
 io.on('connection', (socket) => {
@@ -204,6 +318,22 @@ io.on('connection', (socket) => {
 
   socket.on('listRooms', () => {
     socket.emit('rooms', getRoomsList());
+  });
+
+  socket.on('cleanupRooms', () => {
+    // Limpiar salas vacías o inactivas
+    let cleanedCount = 0;
+    for (const [roomId, room] of rooms.entries()) {
+      if (room.players.size === 0 || (!room.started && room.players.size === 0)) {
+        // Limpiar timers si existen
+        if (room.timer) clearInterval(room.timer);
+        if (room.announceTimeout) clearTimeout(room.announceTimeout);
+        rooms.delete(roomId);
+        cleanedCount++;
+      }
+    }
+    console.log(`Limpieza completada: ${cleanedCount} salas eliminadas`);
+    broadcastRoomsList();
   });
 
   socket.on('createRoom', ({ player, cardsPerPlayer }) => {
@@ -238,6 +368,7 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomId);
     if (!room) return;
     room.players.delete(socket.id);
+    room.playersReady.delete(socket.id); // Remover de listos también
     socket.leave(roomId);
     socket.data.roomId = null;
     if (socket.id === room.hostId) {
@@ -250,6 +381,18 @@ io.on('connection', (socket) => {
       rooms.delete(roomId);
     }
     broadcastRoomsList();
+  });
+
+  // Nuevo evento: Jugador listo para nueva partida
+  socket.on('readyForNewGame', ({ roomId }) => {
+    const room = rooms.get(roomId || socket.data.roomId);
+    if (!room || !room.gameEnded) return;
+    
+    room.playersReady.add(socket.id);
+    broadcastRoomState(room.id);
+    
+    // Verificar si todos están listos
+    checkAllPlayersReady(room);
   });
 
   socket.on('configure', ({ roomId, cardsPerPlayer }) => {
@@ -298,11 +441,26 @@ io.on('connection', (socket) => {
   });
 
   socket.on('claim', ({ roomId, figure, cardIndex, marked }) => {
-    const rid = roomId || socket.data.roomId;
-    const res = figure
-      ? checkClaim(rid, socket.id, figure, cardIndex, marked)
-      : autoClaim(rid, socket.id, cardIndex, marked);
-    socket.emit('claimResult', res);
+    try {
+      console.log(`Claim recibido de ${socket.id}:`, { roomId, figure, cardIndex, hasMarked: !!marked });
+      const rid = roomId || socket.data.roomId;
+      
+      if (!rid) {
+        console.error('Error: No roomId available');
+        socket.emit('claimResult', { ok: false, reason: 'no_room_id' });
+        return;
+      }
+      
+      const res = figure
+        ? checkClaim(rid, socket.id, figure, cardIndex, marked)
+        : autoClaim(rid, socket.id, cardIndex, marked);
+        
+      console.log(`Resultado del claim para ${socket.id}:`, res);
+      socket.emit('claimResult', res);
+    } catch (error) {
+      console.error('Error procesando claim:', error);
+      socket.emit('claimResult', { ok: false, reason: 'server_error' });
+    }
   });
 
   socket.on('getState', ({ roomId }) => {
@@ -320,6 +478,8 @@ io.on('connection', (socket) => {
       drawn: room.drawn,
       lastBall: room.drawn[room.drawn.length - 1] || null,
       figuresClaimed: room.figuresClaimed,
+      gameEnded: room.gameEnded,
+      playersReady: Array.from(room.playersReady),
     });
   });
 
@@ -329,6 +489,7 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomId);
     if (!room) return;
     room.players.delete(socket.id);
+    room.playersReady.delete(socket.id); // Remover de listos también
     if (socket.id === room.hostId) {
       const next = room.players.keys().next();
       room.hostId = next.done ? null : next.value;
