@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Bingo Familiar",
+    "slug": "bingo-familiar",
+    "scheme": "bingo-familiar",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {},
+    "web": {
+      "bundler": "metro"
+    },
+    "extra": {
+      "EXPO_PUBLIC_API_URL": "http://192.168.0.10:4000"
+    },
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}
