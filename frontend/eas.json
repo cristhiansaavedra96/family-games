@@ -6,17 +6,20 @@
     "preview-apk": {
       "android": {
         "buildType": "apk"
-      }
+      },
+      "channel": "preview-apk"
     },
     "preview": {
       "android": {
         "buildType": "apk"
-      }
+      },
+      "channel": "preview"
     },
     "production": {
       "android": {
         "buildType": "app-bundle"
-      }
+      },
+      "channel": "production"
     }
   },
   "submit": {
