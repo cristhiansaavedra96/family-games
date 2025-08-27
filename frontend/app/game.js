@@ -4,9 +4,11 @@ import Animated from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import socket from '../src/socket';
 import { Bingo } from '../src/games';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { ChatPanel, ChatButton, ChatToasts } from '../src/components';
 
 export default function Game() {
   const insets = useSafeAreaInsets();
@@ -28,6 +30,9 @@ export default function Game() {
   const [showExit, setShowExit] = useState(false);
   const [showNumbers, setShowNumbers] = useState(false);
   const [isClaiming, setIsClaiming] = useState(false);
+  const [chatVisible, setChatVisible] = useState(false);
+  const [currentMessage, setCurrentMessage] = useState(null); // deprecated, mantenido temporalmente
+  const [toastMessages, setToastMessages] = useState([]);
 
   // Hook de animaciones del bingo
   const { 
@@ -50,6 +55,12 @@ export default function Game() {
         });
         setPlayersReady(readyObj);
       }
+      // Si comenzó una nueva partida, cerrar el resumen si estaba abierto
+      // Heurística: si lastBall no es null o si drawn se reseteó y hay roomId estable
+      if (showGameSummary && s?.roomId && (s.lastBall !== null || (Array.isArray(s.drawn) && s.drawn.length >= 0))) {
+        setShowGameSummary(false);
+        setGameSummaryData(null);
+      }
     });
     socket.on('ball', (n) => {
       // Animación cuando sale nueva bola
@@ -61,17 +72,25 @@ export default function Game() {
       setGameSummaryData(payload);
       setShowGameSummary(true);
     });
-  socket.on('announcement', (payload) => {
-      // Agregar a la cola de anuncios en lugar de mostrar directamente
-      if (payload && payload.figures && Array.isArray(payload.figures)) {
-        // El backend ya envía anuncios individuales, así que agregamos directamente
+    socket.on('announcement', (payload) => {
+      // Asegurar que los anuncios se muestren de a UNO
+      // Forzar que 'full' (cartón lleno) vaya siempre al final del grupo (particionado estable)
+      if (payload && Array.isArray(payload.figures) && payload.figures.length > 0) {
+        const figs = [...payload.figures];
+        const others = [];
+        const fulls = [];
+        figs.forEach((f) => {
+          if (f === 'full') fulls.push({ ...payload, figures: [f] });
+          else others.push({ ...payload, figures: [f] });
+        });
+        setAnnounceQueue(prev => [...prev, ...others, ...fulls]);
+      } else if (payload) {
         setAnnounceQueue(prev => [...prev, payload]);
       }
     });
     
     socket.on('claimResult', (result) => {
-      setIsClaiming(false); // Reset del estado de reclamación
-      
+      // Ya no reseteamos aquí; el botón queda bloqueado por 2s tras presionar
       if (!result.ok) {
         const errorMessages = {
           'no_new_figures': 'Ya has reclamado todas las figuras completadas',
@@ -96,6 +115,22 @@ export default function Game() {
   socket.on('joined', ({ id }) => setMe(id));
     return () => {
   socket.off('state'); socket.off('ball'); socket.off('gameOver'); socket.off('joined'); socket.off('announcement');
+    };
+  }, []);
+
+  // Chat listener
+  useEffect(() => {
+    const onChatMessage = (messageData) => {
+      console.log('Game - Chat message received:', messageData);
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const withId = { ...messageData, id };
+      setToastMessages(prev => [...prev, withId].slice(-4));
+    };
+
+    socket.on('chatMessage', onChatMessage);
+    
+    return () => {
+      socket.off('chatMessage', onChatMessage);
     };
   }, []);
 
@@ -180,74 +215,103 @@ export default function Game() {
     }
     
     try {
+      // Deshabilitar el botón por 2 segundos desde el toque
       setIsClaiming(true);
+      setTimeout(() => setIsClaiming(false), 2000);
       const rid = state.roomId || params.roomId;
       
       if (!rid || !myPlayer || !myPlayer.cards) {
         console.warn('No se puede reclamar: faltan datos del jugador o sala');
-        setIsClaiming(false);
         return;
       }
       
       const cards = myPlayer.cards;
       console.log(`Evaluando ${cards.length} cartones para reclamar...`);
       
-      let bestCardIndex = -1;
-      let maxFigures = 0;
-      let bestFigures = null;
-      
-      // Evaluar cada cartón detalladamente
-      cards.forEach((card, idx) => {
-        const marked = localMarks[idx] || Array.from({ length: 5 }, () => Array(5).fill(false));
-        
-        // Asegurar que el centro esté marcado
-        marked[2][2] = true;
-        
-        console.log(`Cartón ${idx}:`, {
-          hasMarks: marked.some(row => row.some(cell => cell)),
-          markedCount: marked.flat().filter(Boolean).length
-        });
-        
-        const figures = Bingo.checkFigures(marked);
-        const completedFigures = Object.entries(figures).filter(([key, value]) => value).map(([key]) => key);
-        const figureCount = completedFigures.length;
-        
-        console.log(`Cartón ${idx} - Figuras completadas:`, completedFigures, `(${figureCount} total)`);
-        
-        if (figureCount > maxFigures) {
-          maxFigures = figureCount;
-          bestCardIndex = idx;
-          bestFigures = completedFigures;
+      // Helper: construir matriz marcada efectiva marcando automáticamente los números cantados y el centro libre
+  const buildEffectiveMarked = (card, localMarked) => {
+        const m = Array.from({ length: 5 }, (_, r) => Array.from({ length: 5 }, (_, c) => false));
+        for (let r = 0; r < 5; r++) {
+          for (let c = 0; c < 5; c++) {
+            if (r === 2 && c === 2) { m[r][c] = true; continue; }
+    const wasToggled = Boolean(localMarked?.[r]?.[c]);
+            const value = card?.[r]?.[c];
+            const isDrawn = state.drawn?.includes?.(value);
+    // Considerar marcada solo si el usuario la marcó Y el número fue cantado (o es centro libre)
+    m[r][c] = Boolean(wasToggled && isDrawn);
+          }
         }
-      });
+        return m;
+      };
+
+  let bestCardIndex = -1;
+  let bestEffectiveMarked = null;
       
-      console.log(`Mejor cartón: ${bestCardIndex} con ${maxFigures} figuras:`, bestFigures);
-      
-      // Solo hacer una reclamación si hay figuras completadas
-      if (bestCardIndex >= 0 && maxFigures > 0) {
-        const marked = localMarks[bestCardIndex] || Array.from({ length: 5 }, () => Array(5).fill(false));
-        marked[2][2] = true; // Asegurar centro marcado
-        
-        console.log(`Enviando reclamación para cartón ${bestCardIndex}...`);
-        socket.emit('claim', { roomId: rid, figure: null, cardIndex: bestCardIndex, marked });
-        
-        // Reset después de un timeout
-        setTimeout(() => {
-          setIsClaiming(false);
-        }, 2000);
+      // Evaluar cada cartón y reclamar en todos los que tengan figuras disponibles
+      const claimTargets = [];
+      for (let idx = 0; idx < cards.length; idx++) {
+        const card = cards[idx];
+        const effectiveMarked = buildEffectiveMarked(card, localMarks[idx]);
+        console.log(`Cartón ${idx}:`, {
+          hasMarks: effectiveMarked.some(row => row.some(cell => cell)),
+          markedCount: effectiveMarked.flat().filter(Boolean).length
+        });
+        const figures = Bingo.checkFigures(effectiveMarked);
+        const completedFigures = Object.entries(figures).filter(([key, value]) => value).map(([key]) => key);
+        const availableFigures = completedFigures.filter(fig => !state.figuresClaimed?.[fig]);
+        console.log(`Cartón ${idx} - Figuras completadas:`, completedFigures, `| Disponibles:`, availableFigures);
+        if (availableFigures.length > 0) {
+          claimTargets.push({ idx, marked: effectiveMarked });
+        }
+      }
+
+  if (claimTargets.length > 0) {
+        console.log(`Reclamando en ${claimTargets.length} cartón(es):`, claimTargets.map(t => t.idx));
+        claimTargets.forEach(t => {
+          socket.emit('claim', { roomId: rid, figure: null, cardIndex: t.idx, marked: t.marked });
+        });
       } else {
-        console.warn('No se encontraron figuras completadas para reclamar');
-        setIsClaiming(false);
+        console.warn('No se encontraron figuras disponibles para reclamar');
       }
     } catch (error) {
       console.error('Error en claimAutoAll:', error);
-      setIsClaiming(false);
     }
   }, [state.roomId, params.roomId, myPlayer, localMarks, isClaiming]);
 
+  // Funciones del chat
+  const toggleChat = () => {
+    setChatVisible(!chatVisible);
+  };
+
+  const handleSendMessage = (messageData) => {
+    if (!myPlayer) return;
+
+    const fullMessage = {
+      ...messageData,
+      player: {
+        id: me,
+        name: myPlayer.name,
+        avatarUrl: myPlayer.avatarUrl
+      },
+      timestamp: Date.now()
+    };
+
+    console.log('Game - Sending chat message:', fullMessage);
+    socket.emit('sendChatMessage', { roomId: state.roomId || params.roomId, message: fullMessage });
+    setChatVisible(false);
+  };
+
+  const handleMessageComplete = () => {
+    setCurrentMessage(null);
+  };
+
+  const handleToastComplete = (id) => {
+    setToastMessages(prev => prev.filter(m => m.id !== id));
+  };
+
   const Header = () => (
     <View style={{ paddingHorizontal: 0 }} onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}>
-      <View style={{ backgroundColor: '#2c3e50', borderBottomLeftRadius: 28, borderBottomRightRadius: 28, paddingTop: 8, paddingBottom: 16, paddingHorizontal: 0, minHeight: 160 }}>
+      <View style={{ backgroundColor: '#2c3e50', borderBottomLeftRadius: 28, borderBottomRightRadius: 28, paddingTop: insets.top + 8, paddingBottom: 16, paddingHorizontal: 0, minHeight: 160 }}>
         {/* fila superior: Home y Velocidad juntos a la izquierda, con padding lateral */}
         <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'flex-start', paddingHorizontal: 16 }}>
           <TouchableOpacity onPress={() => setShowExit(true)} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor:'#fff', alignItems:'center', justifyContent:'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
@@ -262,11 +326,11 @@ export default function Game() {
               socket.emit('setSpeed', { roomId: state.roomId || params.roomId, speed: next });
             }} style={{ height: 40, borderRadius: 20, backgroundColor: '#fff', alignItems:'center', justifyContent:'center', paddingHorizontal: 16, flexDirection:'row', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
               <MaterialCommunityIcons name="fast-forward" size={18} color="#2c3e50" />
-              <Text style={{ marginLeft: 8, fontWeight:'700', color:'#2c3e50', fontSize: 14 }}>{(state.speed||1)}x</Text>
+              <Text style={{ marginLeft: 8, fontWeight:'700', color:'#2c3e50', fontSize: 14, fontFamily: 'Montserrat_700Bold' }}>{(state.speed||1)}x</Text>
             </TouchableOpacity>
           ) : (
             <View style={{ height: 40, borderRadius: 20, backgroundColor: '#fff', alignItems:'center', justifyContent:'center', paddingHorizontal: 16, flexDirection:'row', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
-              <Text style={{ fontWeight:'700', color:'#2c3e50', fontSize: 14 }}>{(state.speed||1)}x</Text>
+              <Text style={{ fontWeight:'700', color:'#2c3e50', fontSize: 14, fontFamily: 'Montserrat_700Bold' }}>{(state.speed||1)}x</Text>
             </View>
           )}
         </View>
@@ -287,15 +351,15 @@ export default function Game() {
             },
             historyAnimatedStyle
           ]}>
-            {state.drawn.slice(-4).map((n, i) => (
+            {state.drawn.slice(-4).reverse().map((n, i) => (
               <View key={`${n}-${i}`} style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#27ae60', alignItems: 'center', justifyContent: 'center', marginRight: 8, borderWidth: 2, borderColor: '#fff' }}>
-                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>{n}</Text>
+                <Text style={{ color: '#fff', fontSize: 20, fontFamily: 'Mukta_700Bold', lineHeight: 16, includeFontPadding: false, textAlignVertical: 'center' }}>{n}</Text>
               </View>
             ))}
           </Animated.View>
           <TouchableOpacity onPress={() => setShowNumbers(true)} style={{ height: 36, borderRadius: 18, backgroundColor: '#fff', alignItems:'center', justifyContent:'center', paddingHorizontal: 12, flexDirection:'row', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
             <Ionicons name="list" size={18} color="#2c3e50" />
-            <Text style={{ marginLeft: 8, fontWeight:'700', color:'#2c3e50', fontSize: 12 }}>Lista</Text>
+            <Text style={{ marginLeft: 8, fontWeight:'700', color:'#2c3e50', fontSize: 12, fontFamily: 'Montserrat_700Bold' }}>Lista</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -303,11 +367,12 @@ export default function Game() {
   );
 
   return (
-    <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-  <View style={{ flex: 1 }}>
-    <Header />
-  {/* zona de cartones con altura dinámica */}
-  <View style={{ flex: 1, paddingHorizontal: 0, paddingTop: 16, backgroundColor: '#f5f7fa' }} onLayout={(e)=>{ setAreaW(e.nativeEvent.layout.width); setAreaH(e.nativeEvent.layout.height); }}>
+    <>
+      <StatusBar style="light" />
+      <View style={{ flex: 1, backgroundColor: '#2c3e50' }}>
+        <Header />
+        {/* zona de cartones con altura dinámica */}
+        <View style={{ flex: 1, paddingHorizontal: 0, paddingTop: 16, backgroundColor: '#f5f7fa' }} onLayout={(e)=>{ setAreaW(e.nativeEvent.layout.width); setAreaH(e.nativeEvent.layout.height); }}>
       {(() => {
         const count = myPlayer?.cards?.length || 0;
         // Calculamos la altura disponible real para los cartones
@@ -343,15 +408,15 @@ export default function Game() {
           }
           
           if (count === 2) {
-            // Dos cartones: altura dinámica más conservadora
-            const widthTarget = Math.min(areaW * 0.7, 240);
-            const spacing = 8;
-            const maxCardHeight = (availableHeight - spacing - 20) / 2.2; // Más conservador
-            const computedAspect = Math.min(1.4, Math.max(1.0, widthTarget / maxCardHeight));
+            // Dos cartones: mismo tamaño que 4 cartones pero centrados
+            const spacing = 6;
+            const cardWidth = (areaW - (spacing * 3)) / 2; // Mismo cálculo que para 4 cartones
+            const maxCardHeight = (availableHeight - (spacing * 4)) / 2.2; // Mismo cálculo que para 4 cartones
+            const computedAspect = Math.min(1.5, Math.max(1.0, cardWidth / maxCardHeight));
             
             return (
-              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 4 }}>
-                <View style={{ width: widthTarget, maxWidth: '100%' }}>
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing }}>
+                <View style={{ width: cardWidth }}>
                   {cards.map((card, i) => (
                     <View key={i} style={{ marginBottom: i === 0 ? spacing : 0 }}>
                       <Bingo.BingoCard 
@@ -423,12 +488,35 @@ export default function Game() {
     </View>
   </View>
 
-      {/* Footer mejorado con BINGO */}
-      <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16, backgroundColor: '#f5f7fa' }} onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}>
+      {/* Footer mejorado con BINGO y Chat */}
+      <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16, backgroundColor: '#f5f7fa', flexDirection: 'row', alignItems: 'center', gap: 12 }} onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}>
+        {/* Chat Button */}
+        <TouchableOpacity
+          onPress={toggleChat}
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 28,
+            backgroundColor: '#3498db',
+            alignItems: 'center',
+            justifyContent: 'center',
+            shadowColor: '#000',
+            shadowOpacity: 0.2,
+            shadowRadius: 8,
+            shadowOffset: { width: 0, height: 4 },
+            elevation: 6
+          }}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="chatbubbles" size={24} color="white" />
+        </TouchableOpacity>
+        
+        {/* BINGO Button */}
         <TouchableOpacity 
           onPress={claimAutoAll} 
           disabled={isClaiming}
           style={{ 
+            flex: 1,
             backgroundColor: isClaiming ? '#95a5a6' : '#e74c3c', 
             paddingVertical: 18, 
             paddingHorizontal: 40, 
@@ -444,7 +532,7 @@ export default function Game() {
           }}
           activeOpacity={isClaiming ? 1 : 0.8}
         >
-          <Text style={{ color: 'white', fontSize: 22, fontWeight: '800', letterSpacing: 1 }}>
+          <Text style={{ color: 'white', fontSize: 22, fontWeight: '800', letterSpacing: 1, fontFamily: 'Montserrat_700Bold' }}>
             {isClaiming ? 'VERIFICANDO...' : '¡BINGO!'}
           </Text>
         </TouchableOpacity>
@@ -465,7 +553,7 @@ export default function Game() {
             shadowOffset: { width: 0, height: 8 },
             elevation: 12
           }}>
-            <Text style={{ fontSize: 24, fontWeight: '800', marginBottom: 20, color: '#2c3e50', textAlign: 'center' }}>
+            <Text style={{ fontSize: 24, fontWeight: '800', marginBottom: 20, color: '#2c3e50', textAlign: 'center', fontFamily: 'Montserrat_700Bold' }}>
               🎉 ¡Juego Terminado!
             </Text>
             
@@ -491,13 +579,13 @@ export default function Game() {
                       <Image source={{ uri: player.avatarUrl }} style={{ width: 40, height: 40, borderRadius: 20, marginRight: 12 }} />
                     ) : (
                       <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#3498db', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                        <Text style={{ color: 'white', fontWeight: '700' }}>{player.name?.[0]?.toUpperCase() || '?'}</Text>
+                        <Text style={{ color: 'white', fontWeight: '700', fontFamily: 'Montserrat_700Bold' }}>{player.name?.[0]?.toUpperCase() || '?'}</Text>
                       </View>
                     )}
                     
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 16, fontWeight: '700', color: '#2c3e50' }}>{player.name}</Text>
-                      <Text style={{ fontSize: 12, color: '#7f8c8d' }}>
+                      <Text style={{ fontSize: 16, fontWeight: '700', color: '#2c3e50', fontFamily: 'Montserrat_700Bold' }}>{player.name}</Text>
+                      <Text style={{ fontSize: 12, color: '#7f8c8d', fontFamily: 'Montserrat_400Regular' }}>
                         {playerFigures.length > 0 
                           ? playerFigures.map(fig => Bingo.getFigureLabel(fig)).join(', ')
                           : 'Sin completar'
@@ -520,15 +608,19 @@ export default function Game() {
                   router.replace('/games');
                 }} 
                 style={{ 
-                  flex: 1, 
-                  padding: 14, 
-                  marginRight: 8, 
-                  backgroundColor: '#e74c3c', 
-                  borderRadius: 12, 
-                  alignItems: 'center' 
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 14,
+                  marginRight: 8,
+                  backgroundColor: '#e74c3c',
+                  borderRadius: 12,
+                  shadowColor:'#e74c3c', shadowOpacity:0.25, shadowRadius:8, shadowOffset:{ width:0, height:4 }, elevation:7
                 }}
               >
-                <Text style={{ fontWeight: '700', color: 'white', fontSize: 16 }}>Salir</Text>
+                <Ionicons name="exit-outline" size={18} color="#fff" />
+                <Text style={{ fontWeight: '700', color: 'white', fontSize: 16, marginLeft: 8, fontFamily: 'Montserrat_700Bold' }}>Salir</Text>
               </TouchableOpacity>
               
               <TouchableOpacity 
@@ -539,16 +631,20 @@ export default function Game() {
                   socket.emit('readyForNewGame', { roomId: state.roomId || params.roomId });
                 }} 
                 style={{ 
-                  flex: 1, 
-                  padding: 14, 
-                  marginLeft: 8, 
-                  backgroundColor: playersReady[me] ? '#7f8c8d' : '#27ae60', 
-                  borderRadius: 12, 
-                  alignItems: 'center' 
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 14,
+                  marginLeft: 8,
+                  backgroundColor: playersReady[me] ? '#7f8c8d' : '#27ae60',
+                  borderRadius: 12,
+                  shadowColor: playersReady[me] ? '#7f8c8d' : '#27ae60', shadowOpacity:0.25, shadowRadius:8, shadowOffset:{ width:0, height:4 }, elevation:7
                 }}
                 disabled={playersReady[me]}
               >
-                <Text style={{ fontWeight: '700', color: 'white', fontSize: 16 }}>
+                <Ionicons name={playersReady[me] ? 'hourglass-outline' : 'refresh'} size={18} color="#fff" />
+                <Text style={{ fontWeight: '700', color: 'white', fontSize: 16, marginLeft: 8, fontFamily: 'Montserrat_700Bold' }}>
                   {playersReady[me] ? 'Esperando...' : 'Volver a Jugar'}
                 </Text>
               </TouchableOpacity>
@@ -582,17 +678,17 @@ export default function Game() {
               </View>
             )}
             
-            <Text style={{ fontSize: 22, fontWeight: '800', marginBottom: 8, color: '#2c3e50', textAlign: 'center' }}>
+            <Text style={{ fontSize: 22, fontWeight: '800', marginBottom: 8, color: '#2c3e50', textAlign: 'center', fontFamily: 'Montserrat_700Bold' }}>
               ¡{announce?.playerName || 'Jugador'}!
             </Text>
             
             <View style={{ backgroundColor: '#27ae60', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, marginBottom: 12 }}>
-              <Text style={{ fontSize: 16, color: 'white', fontWeight: '700' }}>
+              <Text style={{ fontSize: 16, color: 'white', fontWeight: '700', fontFamily: 'Montserrat_700Bold' }}>
                 {announce?.figures?.map(fig => Bingo.getFigureLabel(fig)).join(', ')}
               </Text>
             </View>
             
-            <Text style={{ fontSize: 16, textAlign: 'center', color: '#7f8c8d' }}>
+            <Text style={{ fontSize: 16, textAlign: 'center', color: '#7f8c8d', fontFamily: 'Montserrat_400Regular' }}>
               ¡Ha completado una figura!
             </Text>
           </View>
@@ -605,11 +701,11 @@ export default function Game() {
           const pid = state.figuresClaimed?.[key];
           if (!pid) return null;
           const p = (state.players||[]).find(pp=>pp.id===pid);
-          const labelMap = { corners:'Esq', row:'Lín', column:'Col', diagonal:'Diag', border:'Marco', full:'Lleno' };
+          const labelMap = { corners:'Esq', row:'Lín', column:'Col', diagonal:'Diag', border:'Contorno', full:'Lleno' };
           return (
             <View key={key} style={{ flexDirection:'row', backgroundColor:'rgba(255,255,255,0.9)', paddingVertical:4, paddingHorizontal:8, borderRadius:12, marginBottom:4, alignItems:'center' }}>
               {p?.avatarUrl ? <Image source={{ uri: p.avatarUrl }} style={{ width: 18, height: 18, borderRadius: 9, marginRight: 6 }} /> : null}
-              <Text style={{ fontSize:12, fontWeight:'bold' }}>{labelMap[key]}: {p?.name || ''}</Text>
+              <Text style={{ fontSize:12, fontWeight:'bold', fontFamily: 'Montserrat_700Bold' }}>{labelMap[key]}: {p?.name || ''}</Text>
             </View>
           );
         })}
@@ -618,20 +714,20 @@ export default function Game() {
       <Modal transparent visible={showExit} animationType="fade">
         <View style={{ flex:1, backgroundColor:'rgba(0,0,0,0.6)', justifyContent:'center', alignItems:'center', padding:24 }}>
           <View style={{ backgroundColor:'#fff', borderRadius:20, padding:24, width:'85%', maxWidth: 320, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 10 }}>
-            <Text style={{ fontSize:20, fontWeight:'700', marginBottom:12, color: '#2c3e50', textAlign: 'center' }}>¿Salir de la partida?</Text>
-            <Text style={{ fontSize:14, color:'#7f8c8d', textAlign:'center', marginBottom:20 }}>Perderás tu progreso actual en el juego</Text>
+            <Text style={{ fontSize:20, fontWeight:'700', marginBottom:12, color: '#2c3e50', textAlign: 'center', fontFamily: 'Montserrat_700Bold' }}>¿Salir de la partida?</Text>
+            <Text style={{ fontSize:14, color:'#7f8c8d', textAlign:'center', marginBottom:20, fontFamily: 'Montserrat_400Regular' }}>Perderás tu progreso actual en el juego</Text>
             <View style={{ flexDirection:'row', justifyContent:'space-between' }}>
               <TouchableOpacity 
                 onPress={() => setShowExit(false)} 
                 style={{ flex: 1, padding:12, marginRight: 8, backgroundColor: '#ecf0f1', borderRadius: 12, alignItems: 'center' }}
               >
-                <Text style={{ fontWeight: '600', color: '#7f8c8d' }}>Cancelar</Text>
+                <Text style={{ fontWeight: '600', color: '#7f8c8d', fontFamily: 'Montserrat_600SemiBold' }}>Cancelar</Text>
               </TouchableOpacity>
               <TouchableOpacity 
                 onPress={() => { allowExitRef.current = true; socket.emit('leaveRoom'); setShowExit(false); router.replace('/games'); }} 
                 style={{ flex: 1, padding:12, marginLeft: 8, backgroundColor: '#e74c3c', borderRadius: 12, alignItems: 'center' }}
               >
-                <Text style={{ color:'#fff', fontWeight:'700' }}>Salir</Text>
+                <Text style={{ color:'#fff', fontWeight:'700', fontFamily: 'Montserrat_700Bold' }}>Salir</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -643,7 +739,7 @@ export default function Game() {
         <View style={{ flex:1, backgroundColor:'rgba(0,0,0,0.5)' }}>
           <View style={{ marginTop: 80, marginHorizontal: 16, backgroundColor:'#fff', borderRadius: 20, padding: 20, flex:1, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <Text style={{ fontWeight:'800', fontSize: 20, color: '#2c3e50' }}>Números Cantados</Text>
+              <Text style={{ fontWeight:'800', fontSize: 24, color: '#2c3e50', fontFamily: 'Montserrat_700Bold' }}>Números Cantados</Text>
               <TouchableOpacity onPress={() => setShowNumbers(false)} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#ecf0f1', alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name="close" size={20} color="#2c3e50" />
               </TouchableOpacity>
@@ -670,7 +766,7 @@ export default function Game() {
                         shadowOffset: { width: 0, height: drawn ? 3 : 1 },
                         elevation: drawn ? 5 : 1
                       }}>
-                        <Text style={{ fontWeight:'800', color: drawn ? 'white' : '#7f8c8d', fontSize: 12 }}>{n}</Text>
+                        <Text style={{ color: drawn ? 'white' : '#7f8c8d', fontSize: 16, fontFamily: 'Mukta_700Bold', lineHeight: 18, includeFontPadding: false, textAlignVertical: 'center' }}>{n}</Text>
                       </View>
                     </View>
                   );
@@ -680,6 +776,16 @@ export default function Game() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+
+  {/* Chat Toasts apilados a la derecha */}
+  <ChatToasts messages={toastMessages} onItemComplete={handleToastComplete} />
+
+      {/* Chat Panel */}
+      <ChatPanel
+        isVisible={chatVisible}
+        onClose={() => setChatVisible(false)}
+        onSendMessage={handleSendMessage}
+      />
+    </>
   );
 }

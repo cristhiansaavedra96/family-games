@@ -10,22 +10,28 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@expo-google-fonts/montserrat": "^0.4.1",
+    "@expo-google-fonts/mukta": "^0.4.0",
     "@expo/metro-config": "^0.20.17",
     "@react-native-async-storage/async-storage": "2.1.2",
     "expo": "^53.0.0",
     "expo-constants": "~17.1.7",
+    "expo-font": "~13.3.2",
     "expo-image-picker": "~16.1.4",
+    "expo-linear-gradient": "~14.1.5",
     "expo-linking": "~7.1.7",
     "expo-router": "~5.1.5",
     "expo-speech": "~13.1.7",
+    "expo-splash-screen": "~0.30.10",
+    "expo-status-bar": "~2.2.3",
     "metro": "^0.82.0",
     "metro-config": "^0.82.0",
     "metro-resolver": "^0.82.0",
     "react": "19.0.0",
     "react-native": "0.79.5",
+    "react-native-reanimated": "~3.17.4",
     "react-native-safe-area-context": "5.4.0",
     "react-native-screens": "~4.11.1",
-    "socket.io-client": "^4.7.5",
-    "react-native-reanimated": "~3.17.4"
+    "socket.io-client": "^4.7.5"
   }
 }

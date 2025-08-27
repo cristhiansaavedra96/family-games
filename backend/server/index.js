@@ -21,11 +21,41 @@ const io = new Server(server, { cors: { origin: ORIGIN } });
 const rooms = new Map(); // roomId -> state
 let roomCounter = 1;
 
+// Función para encontrar el número de sala más bajo disponible
+function getAvailableRoomNumber() {
+  let roomNumber = 1;
+  while (true) {
+    const roomId = String(roomNumber);
+    if (!rooms.has(roomId)) {
+      return roomNumber;
+    }
+    roomNumber++;
+  }
+}
+
+// Función para encontrar el jugador más antiguo (por joinedAt)
+function getOldestPlayer(room) {
+  if (room.players.size === 0) return null;
+  
+  let oldestPlayerId = null;
+  let oldestJoinTime = Infinity;
+  
+  for (const [playerId, playerData] of room.players) {
+    if (playerData.joinedAt < oldestJoinTime) {
+      oldestJoinTime = playerData.joinedAt;
+      oldestPlayerId = playerId;
+    }
+  }
+  
+  return oldestPlayerId;
+}
+
 function createRoom() {
-  const id = String(roomCounter++);
+  const roomNumber = getAvailableRoomNumber();
+  const id = String(roomNumber);
   const room = {
     id,
-    name: `Sala ${id}`,
+    name: `Sala ${roomNumber}`,
     started: false,
     paused: true,
   speed: 1, // multiplicador x0.5..x2
@@ -203,6 +233,45 @@ function validateAndFlags(roomId, socketId, cardIndex, markedFromClient) {
   return { ok: true, flags };
 }
 
+// Construye detalles de la figura para resaltar celdas exactas
+function buildClaimDetails(figure, marked) {
+  const details = {};
+  if (!marked) return details;
+  switch (figure) {
+    case 'row': {
+      for (let r = 0; r < 5; r++) {
+        if (marked[r].every(Boolean)) { details.row = r; break; }
+      }
+      break;
+    }
+    case 'column': {
+      for (let c = 0; c < 5; c++) {
+        if ([0,1,2,3,4].every(i => marked[i][c])) { details.column = c; break; }
+      }
+      break;
+    }
+    case 'diagonal': {
+      const d1 = [0,1,2,3,4].every(i => marked[i][i]);
+      const d2 = [0,1,2,3,4].every(i => marked[i][4-i]);
+      if (d1) details.diagonal = 0; else if (d2) details.diagonal = 1;
+      break;
+    }
+    case 'border': {
+      details.border = true;
+      break;
+    }
+    case 'corners': {
+      details.corners = true;
+      break;
+    }
+    case 'full': {
+      details.full = true;
+      break;
+    }
+  }
+  return details;
+}
+
 function checkClaim(roomId, socketId, figure, cardIndex, markedFromClient) {
   const room = rooms.get(roomId);
   if (!room) return { ok: false, reason: 'room_not_found' };
@@ -212,11 +281,51 @@ function checkClaim(roomId, socketId, figure, cardIndex, markedFromClient) {
   const { flags } = valid;
   if (!flags[figure]) return { ok: false, reason: 'invalid' };
   room.figuresClaimed[figure] = socketId;
+  // Registrar reclamo específico con detalles
+  try {
+    const details = buildClaimDetails(figure, markedFromClient);
+    const claimKey = `${socketId}:${cardIndex}:${figure}`;
+    const player = rooms.get(roomId)?.players.get(socketId) || {};
+    rooms.get(roomId).specificClaims.set(claimKey, {
+      playerId: socketId,
+      cardIndex,
+      figure,
+      details,
+      playerName: player.name,
+      timestamp: Date.now()
+    });
+    // Encolar anuncio individual y procesar cola (pausar durante anuncios)
+    room.announcementQueue.push({
+      roomId,
+      playerId: socketId,
+      playerName: player.name,
+      playerAvatar: player.avatarUrl,
+      figures: [figure],
+      cardIndex
+    });
+  } catch (e) {
+    console.warn('Failed to build claim details (manual):', e);
+  }
   broadcastRoomState(roomId);
+  // Procesar cola de anuncios (pausa y reanuda automáticamente cuando termine)
+  processAnnouncementQueue(room);
   if (figure === 'full') {
-    stopTimer(room);
     room.gameEnded = true;
-    io.to(roomId).emit('gameOver', { roomId, winner: socketId, figuresClaimed: room.figuresClaimed });
+    stopTimer(room);
+    // Enviar gameOver después de que terminen los anuncios en cola
+    const pending = room.announcementQueue.length;
+    setTimeout(() => {
+      io.to(roomId).emit('gameOver', { 
+        roomId, 
+        winner: socketId, 
+        figuresClaimed: room.figuresClaimed,
+        players: Array.from(room.players.entries()).map(([sid, p]) => ({
+          id: sid,
+          name: p.name,
+          avatarUrl: p.avatarUrl
+        }))
+      });
+    }, pending * 2500 + 1000);
   }
   return { ok: true };
 }
@@ -242,10 +351,12 @@ function autoClaim(roomId, socketId, cardIndex, markedFromClient) {
     
     // Registrar reclamación específica
     const claimKey = `${socketId}:${cardIndex}:${f}`;
+    const details = buildClaimDetails(f, markedFromClient);
     room.specificClaims.set(claimKey, {
       playerId: socketId,
       cardIndex: cardIndex,
       figure: f,
+      details,
       playerName: player.name,
       timestamp: Date.now()
     });
@@ -339,7 +450,7 @@ io.on('connection', (socket) => {
   socket.on('createRoom', ({ player, cardsPerPlayer }) => {
     const room = createRoom();
     const { name, avatarUrl } = player || {};
-    room.players.set(socket.id, { name, avatarUrl, cards: [] });
+    room.players.set(socket.id, { name, avatarUrl, cards: [], joinedAt: Date.now() });
     room.hostId = socket.id;
     if (cardsPerPlayer) room.cardsPerPlayer = Math.max(1, Math.min(4, Number(cardsPerPlayer) || 1));
     socket.join(room.id);
@@ -353,7 +464,7 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomId);
     if (!room) return;
     const { name, avatarUrl } = player || {};
-    room.players.set(socket.id, { name, avatarUrl, cards: [] });
+    room.players.set(socket.id, { name, avatarUrl, cards: [], joinedAt: Date.now() });
     if (!room.hostId) room.hostId = socket.id;
     socket.join(room.id);
     socket.data.roomId = room.id;
@@ -367,19 +478,28 @@ io.on('connection', (socket) => {
     if (!roomId) return;
     const room = rooms.get(roomId);
     if (!room) return;
+    
+    // Remover al jugador de la sala
     room.players.delete(socket.id);
-    room.playersReady.delete(socket.id); // Remover de listos también
+    room.playersReady.delete(socket.id);
     socket.leave(roomId);
     socket.data.roomId = null;
+    
+    // Si era el anfitrión, transferir anfitrionazgo o eliminar sala
     if (socket.id === room.hostId) {
-      const next = room.players.keys().next();
-      room.hostId = next.done ? null : next.value;
+      if (room.players.size === 0) {
+        // No hay más jugadores, eliminar la sala
+        stopTimer(room);
+        rooms.delete(roomId);
+        broadcastRoomsList();
+        return;
+      } else {
+        // Transferir anfitrionazgo al jugador más antiguo
+        room.hostId = getOldestPlayer(room);
+      }
     }
+    
     broadcastRoomState(roomId);
-    if (room.players.size === 0) {
-      stopTimer(room);
-      rooms.delete(roomId);
-    }
     broadcastRoomsList();
   });
 
@@ -483,22 +603,51 @@ io.on('connection', (socket) => {
     });
   });
 
+  // Manejar mensajes de chat
+  socket.on('sendChatMessage', ({ roomId, message }) => {
+    console.log('Received chat message:', { roomId, message });
+    const room = rooms.get(roomId || socket.data.roomId);
+    if (!room) {
+      console.log('Room not found for chat message');
+      return;
+    }
+    
+    // Verificar que el jugador está en la sala
+    if (!room.players.has(socket.id)) {
+      console.log('Player not in room for chat message');
+      return;
+    }
+    
+    console.log('Broadcasting chat message to room:', roomId || socket.data.roomId);
+    // Reenviar el mensaje a todos en la sala
+    io.to(roomId || socket.data.roomId).emit('chatMessage', message);
+  });
+
   socket.on('disconnect', () => {
     const roomId = socket.data.roomId;
     if (!roomId) return;
     const room = rooms.get(roomId);
     if (!room) return;
+    
+    // Remover al jugador de la sala
     room.players.delete(socket.id);
-    room.playersReady.delete(socket.id); // Remover de listos también
+    room.playersReady.delete(socket.id);
+    
+    // Si era el anfitrión, transferir anfitrionazgo o eliminar sala
     if (socket.id === room.hostId) {
-      const next = room.players.keys().next();
-      room.hostId = next.done ? null : next.value;
+      if (room.players.size === 0) {
+        // No hay más jugadores, eliminar la sala
+        stopTimer(room);
+        rooms.delete(roomId);
+        broadcastRoomsList();
+        return;
+      } else {
+        // Transferir anfitrionazgo al jugador más antiguo
+        room.hostId = getOldestPlayer(room);
+      }
     }
+    
     broadcastRoomState(roomId);
-    if (room.players.size === 0) {
-      stopTimer(room);
-      rooms.delete(roomId);
-    }
     broadcastRoomsList();
   });
 });

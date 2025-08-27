@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Bingo Familiar",
-    "slug": "bingo-familiar",
-    "scheme": "bingo-familiar",
+    "name": "familyGames",
+    "slug": "familygames",
+    "scheme": "familygames",
     "version": "1.0.0",
     "orientation": "portrait",
     "updates": {
@@ -14,15 +14,24 @@
     "ios": {
       "supportsTablet": true
     },
-    "android": {},
+    "android": {
+      "package": "com.familygames.app",
+      "versionCode": 1,
+      "permissions": []
+    },
     "web": {
       "bundler": "metro"
     },
     "extra": {
-      "EXPO_PUBLIC_API_URL": "http://192.168.0.10:4000"
+      "EXPO_PUBLIC_API_URL": "https://family-games-backend-production.up.railway.app",
+      "router": {},
+      "eas": {
+        "projectId": "d443c4ff-0a55-4aba-acf5-9fdd6bbc5034"
+      }
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-font"
     ]
   }
 }

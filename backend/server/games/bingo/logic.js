@@ -23,8 +23,8 @@ function generateCard() {
       const n = Math.floor(Math.random() * (end - start + 1)) + start;
       if (!used.has(n)) { used.add(n); nums.push(n); }
     }
-    nums.sort((a, b) => a - b);
-    return nums;
+  // No ordenar: mantener el orden aleatorio dentro de la columna
+  return nums;
   };
 
   const grid = Array.from({ length: 5 }, () => Array(5).fill(null));

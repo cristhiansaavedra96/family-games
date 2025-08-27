@@ -21,5 +21,5 @@ export function speakBingoNumber(n) {
     const digits = String(n).split('').map(digitWord).join(' ');
     phrase = `${digits}, ${words}`;
   }
-  Speech.speak(phrase, { language: 'es-AR' });
+  Speech.speak(phrase, { language: 'es-AR', pitch: 1.1, rate: 0.9 });
 }

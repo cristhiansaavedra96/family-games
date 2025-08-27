@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, Platform } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 function AnimatedBingoBallBase({ 
@@ -29,8 +29,14 @@ function AnimatedBingoBallBase({
       ]}>
         <Text style={{ 
           color: '#fff', 
-          fontSize: 32, 
-          fontWeight: 'bold',
+          fontSize: 56, 
+          // Usar la fuente Mukta para los números de bolilla
+          fontFamily: 'Mukta_700Bold',
+          // Centrado vertical más preciso con Mukta
+          lineHeight: 58,
+          includeFontPadding: false, // Android
+          textAlignVertical: 'center', // Android
+          transform: [{ translateY: Platform.OS === 'android' ? 1 : 2 }],
           textShadowColor: 'rgba(0,0,0,0.3)',
           textShadowOffset: { width: 1, height: 1 },
           textShadowRadius: 2

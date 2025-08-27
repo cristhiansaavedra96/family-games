@@ -46,14 +46,13 @@ export function getPlayerCompletedFigures(player, figuresClaimed) {
 // Nueva función para obtener figuras específicas de un cartón
 export function getCardSpecificFigures(playerId, cardIndex, specificClaims) {
   if (!specificClaims || !playerId || cardIndex === undefined) return [];
-  
+  // devolver objetos con figure y details (para pintar exactamente esa fila/col/diag)
   const figures = [];
   Object.values(specificClaims).forEach(claim => {
     if (claim.playerId === playerId && claim.cardIndex === cardIndex) {
-      figures.push(claim.figure);
+      figures.push({ figure: claim.figure, details: claim.details || {} });
     }
   });
-  
   return figures;
 }
 
@@ -64,7 +63,7 @@ export function getFigureLabel(figure) {
     row: 'Línea',
     column: 'Columna',
     diagonal: 'Diagonal',
-    border: 'Marco',
+  border: 'Contorno',
     full: 'Cartón lleno'
   };
   return labels[figure] || figure;

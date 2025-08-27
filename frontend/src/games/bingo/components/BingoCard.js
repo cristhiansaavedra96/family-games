@@ -10,7 +10,7 @@ function BingoCardBase({ card, drawn, marked, onToggle, compact, cellAspect, siz
         return {
           containerPadding: 10,
           headerFontSize: 14,
-          cellFontSize: 22,
+          cellFontSize: 32,
           borderRadius: 18,
           headerSpacing: 6
         };
@@ -18,7 +18,7 @@ function BingoCardBase({ card, drawn, marked, onToggle, compact, cellAspect, siz
         return {
           containerPadding: 6,
           headerFontSize: 11,
-          cellFontSize: 18,
+          cellFontSize: 24,
           borderRadius: 16,
           headerSpacing: 3
         };
@@ -26,7 +26,7 @@ function BingoCardBase({ card, drawn, marked, onToggle, compact, cellAspect, siz
         return {
           containerPadding: 4,
           headerFontSize: 9,
-          cellFontSize: 14,
+          cellFontSize: 22,
           borderRadius: 12,
           headerSpacing: 2
         };
@@ -34,7 +34,7 @@ function BingoCardBase({ card, drawn, marked, onToggle, compact, cellAspect, siz
         return {
           containerPadding: compact ? 4 : 6,
           headerFontSize: compact ? 9 : 11,
-          cellFontSize: compact ? 16 : 18,
+          cellFontSize: compact ? 18 : 20,
           borderRadius: 16,
           headerSpacing: compact ? 2 : 3
         };
@@ -43,20 +43,20 @@ function BingoCardBase({ card, drawn, marked, onToggle, compact, cellAspect, siz
 
   const sizes = getSizes();
 
-  // Función para determinar si una celda está en una figura completada ESPECÍFICAMENTE en este cartón
+  // Determina si una celda pertenece a una figura reclamada específica (la primera) con detalles
   const isInCompletedFigure = (r, c) => {
-    return specificFigures.some(figure => {
+    return (specificFigures || []).some(entry => {
+      const fig = typeof entry === 'string' ? { figure: entry, details: {} } : entry;
+      const { figure, details = {} } = fig || {};
       switch (figure) {
         case 'row':
-          // Solo marcar en dorado si ESTA fila específica está completada
-          return Array.from({length: 5}, (_, i) => marked?.[r]?.[i]).every(Boolean);
+          return details.row !== undefined && r === details.row;
         case 'column':
-          // Solo marcar en dorado si ESTA columna específica está completada
-          return Array.from({length: 5}, (_, i) => marked?.[i]?.[c]).every(Boolean);
+          return details.column !== undefined && c === details.column;
         case 'diagonal':
-          // Solo marcar en dorado si ESTA diagonal específica está completada
-          return (r === c && Array.from({length: 5}, (_, i) => marked?.[i]?.[i]).every(Boolean)) ||
-                 (r + c === 4 && Array.from({length: 5}, (_, i) => marked?.[i]?.[4-i]).every(Boolean));
+          if (details.diagonal === 0) return r === c; // principal
+          if (details.diagonal === 1) return r + c === 4; // secundaria
+          return false;
         case 'corners':
           return (r === 0 || r === 4) && (c === 0 || c === 4);
         case 'border':
@@ -91,7 +91,8 @@ function BingoCardBase({ card, drawn, marked, onToggle, compact, cellAspect, siz
               fontWeight: '700', 
               fontSize: sizes.headerFontSize, 
               letterSpacing: 2, 
-              color: ['#e74c3c','#f39c12','#27ae60','#3498db','#9b59b6'][i] 
+              color: ['#e74c3c','#f39c12','#27ae60','#3498db','#9b59b6'][i],
+              fontFamily: 'Montserrat_700Bold'
             }}>
               {h}
             </Text>
@@ -100,8 +101,7 @@ function BingoCardBase({ card, drawn, marked, onToggle, compact, cellAspect, siz
       </View>
       
       <View style={{ 
-        borderWidth: 1, 
-        borderColor: gridBorder, 
+        borderWidth: 0, 
         borderRadius: 12, 
         overflow: 'hidden', 
         marginHorizontal: 0,
@@ -159,12 +159,10 @@ function BingoCardBase({ card, drawn, marked, onToggle, compact, cellAspect, siz
                       justifyContent: 'center' 
                     }} pointerEvents="none">
                       <View style={{ 
-                        width: '82%',
+                        width: '94%',
                         aspectRatio: 1, 
                         borderRadius: 999, 
                         backgroundColor: circleColor, 
-                        borderWidth: 2, 
-                        borderColor: '#ffffff',
                         shadowColor: circleColor,
                         shadowOpacity: 0.3,
                         shadowRadius: 4,
@@ -176,11 +174,13 @@ function BingoCardBase({ card, drawn, marked, onToggle, compact, cellAspect, siz
                   
                   {/* Número */}
                   <Text style={{ 
-                    fontSize: sizes.cellFontSize, 
-                    fontWeight: isCenter ? '400' : '700', 
-                    letterSpacing: -0.5, 
+                    fontSize: sizes.cellFontSize,
+                    letterSpacing: -0.5,
                     color: isCenter ? '#f39c12' : textColor,
-                    zIndex: 1
+                    zIndex: 1,
+                    fontFamily: isCenter ? 'Montserrat_400Regular' : 'Mukta_700Bold',
+                    // Subir levemente el número para mejor centrado visual
+                    transform: isCenter ? undefined : [{ translateY: -2 }]
                   }}>
                     {isCenter ? '★' : n}
                   </Text>
