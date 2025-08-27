@@ -6,6 +6,7 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import socket from '../src/socket';
 import { ChatPanel, ChatButton, ChatToasts } from '../src/components';
+import { useAvatarSync } from '../src/hooks/useAvatarSync';
 
 const { width } = Dimensions.get('window');
 
@@ -16,12 +17,20 @@ export default function Waiting() {
   const [chatVisible, setChatVisible] = useState(false);
   const [currentMessage, setCurrentMessage] = useState(null); // legacy
   const [toastMessages, setToastMessages] = useState([]);
+  const { syncPlayers, getAvatarUrl } = useAvatarSync();
 
   useEffect(() => {
     setMe(socket.id);
     const onConnect = () => setMe(socket.id);
     const onState = (s) => {
-      if (s.roomId === roomId) setState(s);
+      if (s.roomId === roomId) {
+        setState(s);
+        // Sincronizar avatares cuando cambien los jugadores
+        if (s.players && s.players.length > 0) {
+          console.log('🔄 Waiting - Syncing avatars for players:', s.players.map(p => p.username));
+          syncPlayers(s.players);
+        }
+      }
       if (s.started) router.replace({ pathname: '/game', params: { roomId } });
     };
     const onJoined = ({ id }) => setMe(id);
@@ -74,7 +83,8 @@ export default function Waiting() {
       player: {
         id: me,
         name: currentPlayer.name,
-        avatarUrl: currentPlayer.avatarUrl
+        username: currentPlayer.username,
+        avatarId: currentPlayer.avatarId
       },
       timestamp: Date.now()
     };
@@ -111,16 +121,31 @@ export default function Waiting() {
       }}>
         {/* Avatar con indicador de estado */}
         <View style={{ position: 'relative', marginRight: 16 }}>
-          <Image 
-            source={{ uri: item.avatarUrl || `https://i.pravatar.cc/60?u=${item.id}` }} 
-            style={{ 
+          {getAvatarUrl(item.username) ? (
+            <Image 
+              source={{ uri: getAvatarUrl(item.username) }} 
+              style={{ 
+                width: 50, 
+                height: 50, 
+                borderRadius: 25,
+                borderWidth: isHost ? 3 : 0,
+                borderColor: isHost ? '#e74c3c' : 'transparent'
+              }} 
+            />
+          ) : (
+            <View style={{
               width: 50, 
               height: 50, 
               borderRadius: 25,
               borderWidth: isHost ? 3 : 0,
-              borderColor: isHost ? '#e74c3c' : 'transparent'
-            }} 
-          />
+              borderColor: isHost ? '#e74c3c' : 'transparent',
+              backgroundColor: '#f0f0f0',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <Text style={{ fontSize: 20, color: '#666' }}>👤</Text>
+            </View>
+          )}
           {/* Indicador de conexión */}
           <View style={{
             position: 'absolute',

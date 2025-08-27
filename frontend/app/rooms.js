@@ -1,36 +1,156 @@
 import { useEffect, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Image, Alert, ScrollView } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, Image, Alert, ScrollView, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import socket from '../src/socket';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getUsername } from '../src/utils';
+import * as FileSystem from 'expo-file-system';
+import { useAvatarSync } from '../src/hooks/useAvatarSync';
 
 export default function Rooms() {
   const [rooms, setRooms] = useState([]);
+  const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+  const [joiningRoomId, setJoiningRoomId] = useState(null);
+  const { syncPlayers, getAvatarUrl, setLocalAvatarUrl } = useAvatarSync();
+
+  // Helper function to convert local avatar to base64
+  const getAvatarBase64 = async () => {
+    try {
+      const avatarPath = await AsyncStorage.getItem('profile:avatar');
+      if (!avatarPath) {
+        console.log('❌ Rooms - No avatar path found in AsyncStorage');
+        return null;
+      }
+      
+      console.log('🔄 Converting avatar to base64 for room join...');
+      const base64 = await FileSystem.readAsStringAsync(avatarPath, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const avatarBase64 = `data:image/jpeg;base64,${base64}`;
+      console.log('✅ Avatar converted for room join, size:', avatarBase64.length, 'characters');
+      console.log('🔍 Avatar preview:', avatarBase64.substring(0, 100) + '...');
+      return avatarBase64;
+    } catch (error) {
+      console.error('❌ Error converting avatar for room:', error);
+      return null;
+    }
+  };
 
   useEffect(() => {
-    const onRooms = (list) => setRooms(list);
+    const onRooms = (list) => {
+      setRooms(list);
+      
+      // Sincronizar avatares de todos los jugadores
+      const allPlayers = list.flatMap(room => room.players || []);
+      if (allPlayers.length > 0) {
+        console.log('🔄 Syncing avatars for players in rooms:', allPlayers.length);
+        syncPlayers(allPlayers);
+      }
+    };
+    
     socket.on('rooms', onRooms);
     socket.emit('listRooms');
-    return () => socket.off('rooms', onRooms);
+    
+    // Cargar mi propio avatar para mostrarlo inmediatamente en las salas
+    const loadMyAvatarForRooms = async () => {
+      try {
+        const myUsername = await getUsername();
+        const savedAvatarPath = await AsyncStorage.getItem('profile:avatar');
+        
+        if (myUsername && savedAvatarPath) {
+          console.log('🔄 Rooms - Loading my avatar for display');
+          const base64 = await FileSystem.readAsStringAsync(savedAvatarPath, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          const avatarBase64 = `data:image/jpeg;base64,${base64}`;
+          setLocalAvatarUrl(myUsername, avatarBase64);
+          console.log('⚡ Rooms - My avatar ready for display');
+        }
+      } catch (error) {
+        console.error('❌ Error loading my avatar in rooms:', error);
+      }
+    };
+    
+    loadMyAvatarForRooms();
+    
+    return () => {
+      socket.off('rooms', onRooms);
+      // Limpiar estados de loading al salir
+      setIsCreatingRoom(false);
+      setJoiningRoomId(null);
+    };
+  }, [syncPlayers, setLocalAvatarUrl]);
+
+  // Limpiar estados de loading al desmontarse
+  useEffect(() => {
+    return () => {
+      setIsCreatingRoom(false);
+      setJoiningRoomId(null);
+    };
   }, []);
 
   const openRoom = async (roomId) => {
-    const name = await AsyncStorage.getItem('profile:name');
-    const avatarUrl = await AsyncStorage.getItem('profile:avatar');
-    socket.emit('joinRoom', { roomId, player: { name, avatarUrl } });
-    router.push({ pathname: '/waiting', params: { roomId } });
+    if (joiningRoomId) return; // Prevenir múltiples clicks
+    
+    setJoiningRoomId(roomId);
+    try {
+      const name = await AsyncStorage.getItem('profile:name');
+      const username = await getUsername();
+      // No enviar avatar - el servidor lo obtiene de la BD
+      socket.emit('joinRoom', { roomId, player: { name, username } });
+      
+      // Escuchar respuesta del servidor
+      socket.once('joined', ({ roomId: joinedRoomId }) => {
+        setJoiningRoomId(null);
+        router.push({ pathname: '/waiting', params: { roomId: joinedRoomId } });
+      });
+      
+      // Timeout de seguridad
+      setTimeout(() => {
+        setJoiningRoomId(null);
+      }, 10000);
+      
+    } catch (error) {
+      console.error('Error joining room:', error);
+      setJoiningRoomId(null);
+    }
   };
 
   const createRoom = async () => {
-    const name = await AsyncStorage.getItem('profile:name');
-    const avatarUrl = await AsyncStorage.getItem('profile:avatar');
-    socket.emit('createRoom', { player: { name, avatarUrl } });
-    socket.once('joined', ({ roomId }) => {
-      router.push({ pathname: '/waiting', params: { roomId } });
-    });
+    if (isCreatingRoom) return; // Prevenir múltiples clicks
+    
+    setIsCreatingRoom(true);
+    try {
+      const name = await AsyncStorage.getItem('profile:name');
+      const username = await getUsername();
+      
+      console.log('🔄 Creating room with player data:', {
+        name,
+        username,
+        note: 'Avatar will be loaded from DB by server'
+      });
+      
+      // No enviar avatar - el servidor lo obtiene de la BD
+      socket.emit('createRoom', { player: { name, username } });
+      
+      socket.once('joined', ({ roomId }) => {
+        console.log('✅ Room created and joined:', roomId);
+        setIsCreatingRoom(false);
+        router.push({ pathname: '/waiting', params: { roomId } });
+      });
+      
+      // Timeout de seguridad
+      setTimeout(() => {
+        setIsCreatingRoom(false);
+      }, 10000);
+      
+    } catch (error) {
+      console.error('Error creating room:', error);
+      setIsCreatingRoom(false);
+    }
   };
 
   const refreshRooms = () => {
@@ -41,6 +161,8 @@ export default function Rooms() {
     const isInGame = item.started;
     const playerCount = item.players.length;
     const maxPlayers = 8; // Suponiendo un máximo
+    const isJoining = joiningRoomId === item.id;
+    const cardsPerPlayer = item.cardsPerPlayer || 1;
     
     return (
       <TouchableOpacity 
@@ -55,9 +177,10 @@ export default function Rooms() {
           shadowOffset: { width: 0, height: 4 }, 
           elevation: 6,
           borderLeftWidth: 4,
-          borderLeftColor: isInGame ? '#e74c3c' : '#27ae60'
+          borderLeftColor: isInGame ? '#e74c3c' : (isJoining ? '#f39c12' : '#27ae60'),
+          opacity: (isInGame || isJoining) ? 0.7 : 1
         }}
-        disabled={isInGame}
+        disabled={isInGame || isJoining}
         activeOpacity={0.7}
       >
         <View style={{ padding: 16 }}>
@@ -70,7 +193,7 @@ export default function Rooms() {
                 </Text>
                 {/* Badge de estado */}
                 <View style={{
-                  backgroundColor: isInGame ? '#e74c3c' : '#27ae60',
+                  backgroundColor: isJoining ? '#f39c12' : (isInGame ? '#e74c3c' : '#27ae60'),
                   paddingHorizontal: 8,
                   paddingVertical: 3,
                   borderRadius: 10
@@ -81,23 +204,33 @@ export default function Rooms() {
                     fontWeight: '600',
                     textTransform: 'uppercase'
                   }}>
-                    {isInGame ? 'EN JUEGO' : 'ESPERANDO'}
+                    {isJoining ? 'UNIÉNDOSE' : (isInGame ? 'EN JUEGO' : 'ESPERANDO')}
                   </Text>
                 </View>
               </View>
               
-              {/* Contador de jugadores */}
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Ionicons name="people" size={16} color="#7f8c8d" />
-                <Text style={{ color: '#7f8c8d', fontSize: 14, marginLeft: 4 }}>
-                  {playerCount}/{maxPlayers} jugadores
-                </Text>
+              {/* Contador de jugadores y cartones */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 12 }}>
+                  <Ionicons name="people" size={16} color="#7f8c8d" />
+                  <Text style={{ color: '#7f8c8d', fontSize: 14, marginLeft: 4 }}>
+                    {playerCount}/{maxPlayers} jugadores
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="grid-outline" size={16} color="#7f8c8d" />
+                  <Text style={{ color: '#7f8c8d', fontSize: 14, marginLeft: 4 }}>
+                    {cardsPerPlayer} {cardsPerPlayer === 1 ? 'cartón' : 'cartones'} por jugador
+                  </Text>
+                </View>
               </View>
             </View>
             
             {/* Icono de acción */}
             <View style={{ alignItems: 'center' }}>
-              {isInGame ? (
+              {isJoining ? (
+                <ActivityIndicator size={24} color="#f39c12" />
+              ) : isInGame ? (
                 <Ionicons name="lock-closed" size={24} color="#e74c3c" />
               ) : (
                 <Ionicons name="arrow-forward" size={24} color="#27ae60" />
@@ -108,13 +241,16 @@ export default function Rooms() {
           {/* Avatares de jugadores */}
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             {item.players.slice(0, 5).map((p, index) => (
-              <Image 
-                key={p.id} 
-                source={{ uri: p.avatarUrl || `https://i.pravatar.cc/60?u=${p.id}` }} 
-                style={{ 
-                  width: 28, 
-                  height: 28, 
-                  borderRadius: 14, 
+              getAvatarUrl(p.username) ? (
+                <Image 
+                  key={p.id} 
+                  source={{ 
+                    uri: getAvatarUrl(p.username)
+                  }} 
+                  style={{ 
+                    width: 28, 
+                    height: 28, 
+                    borderRadius: 14, 
                   marginRight: 6,
                   borderWidth: 2,
                   borderColor: '#fff',
@@ -124,6 +260,28 @@ export default function Rooms() {
                   elevation: 2
                 }} 
               />
+              ) : (
+                <View 
+                  key={p.id}
+                  style={{ 
+                    width: 28, 
+                    height: 28, 
+                    borderRadius: 14, 
+                    marginRight: 6,
+                    backgroundColor: '#f0f0f0',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 2,
+                    borderColor: '#fff',
+                    shadowColor: '#000',
+                    shadowOpacity: 0.1,
+                    shadowRadius: 2,
+                    elevation: 2
+                  }}
+                >
+                  <Text style={{ fontSize: 12, color: '#666' }}>👤</Text>
+                </View>
+              )
             ))}
             {item.players.length > 5 && (
               <View style={{
@@ -206,6 +364,25 @@ export default function Rooms() {
               }}>
                 Únete a una sala o crea la tuya
               </Text>
+              {/* Botón ranking en header */}
+              <TouchableOpacity
+                onPress={() => router.push({ pathname: '/leaderboard', params: { gameKey: 'bingo' } })}
+                style={{
+                  marginTop: 12,
+                  backgroundColor: 'rgba(255,255,255,0.15)',
+                  borderRadius: 20,
+                  paddingVertical: 8,
+                  paddingHorizontal: 14,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.25)'
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="trophy" size={16} color="#f1c40f" />
+                <Text style={{ color: 'white', marginLeft: 6, fontWeight: '700' }}>Ver Ranking</Text>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -217,25 +394,43 @@ export default function Rooms() {
                 {/* Create Room Button */}
                 <TouchableOpacity 
                   onPress={createRoom}
+                  disabled={isCreatingRoom}
                   style={{ 
                     flex: 1,
-                    backgroundColor: '#e74c3c',
+                    backgroundColor: isCreatingRoom ? '#bdc3c7' : '#e74c3c',
                     borderRadius: 12,
                     paddingVertical: 16,
                     alignItems: 'center',
-                    marginRight: 12
+                    marginRight: 12,
+                    opacity: isCreatingRoom ? 0.7 : 1
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Ionicons name="add-circle" size={20} color="white" />
-                    <Text style={{ 
-                      color: 'white', 
-                      fontSize: 16, 
-                      fontWeight: '700', 
-                      marginLeft: 6
-                    }}>
-                      Crear Sala
-                    </Text>
+                    {isCreatingRoom ? (
+                      <>
+                        <ActivityIndicator size="small" color="white" />
+                        <Text style={{ 
+                          color: 'white', 
+                          fontSize: 16, 
+                          fontWeight: '700', 
+                          marginLeft: 6
+                        }}>
+                          Creando...
+                        </Text>
+                      </>
+                    ) : (
+                      <>
+                        <Ionicons name="add-circle" size={20} color="white" />
+                        <Text style={{ 
+                          color: 'white', 
+                          fontSize: 16, 
+                          fontWeight: '700', 
+                          marginLeft: 6
+                        }}>
+                          Crear Sala
+                        </Text>
+                      </>
+                    )}
                   </View>
                 </TouchableOpacity>
 

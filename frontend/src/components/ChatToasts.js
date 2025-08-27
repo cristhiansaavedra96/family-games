@@ -1,10 +1,24 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View } from 'react-native';
 import ChatToastItem from './ChatToastItem';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAvatarSync } from '../hooks/useAvatarSync';
 
 export default function ChatToasts({ messages, onItemComplete }) {
   const insets = useSafeAreaInsets();
+  const { syncAvatar } = useAvatarSync();
+
+  // Sincronizar avatares de los mensajes de chat
+  useEffect(() => {
+    if (messages && Array.isArray(messages)) {
+      messages.forEach(message => {
+        if (message.player?.username && message.player?.avatarId) {
+          syncAvatar(message.player.username, message.player.avatarId);
+        }
+      });
+    }
+  }, [messages, syncAvatar]);
+
   if (!messages || messages.length === 0) return null;
 
   return (

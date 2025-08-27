@@ -1,10 +1,12 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, Image, Animated } from 'react-native';
+import { useAvatarSync } from '../hooks/useAvatarSync';
 
 export default function ChatToastItem({ message, onComplete }) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(-10)).current;
   const onCompleteRef = useRef(onComplete);
+  const { getAvatarUrl, syncAvatar } = useAvatarSync();
 
   // Mantener la última referencia de onComplete sin reiniciar animaciones
   useEffect(() => {
@@ -13,6 +15,18 @@ export default function ChatToastItem({ message, onComplete }) {
 
   useEffect(() => {
     if (!message) return;
+
+    // Sincronizar avatar si tenemos avatarId válido pero no está en caché
+    if (message.player?.avatarId && message.player?.username) {
+      // No intentar sincronizar avatarIds temporales (local_*)
+      if (!message.player.avatarId.startsWith('local_')) {
+        const currentAvatarUrl = getAvatarUrl(message.player.username);
+        if (!currentAvatarUrl) {
+          console.log('🔄 ChatToastItem - Syncing avatar for:', message.player.username, 'avatarId:', message.player.avatarId);
+          syncAvatar(message.player.username, message.player.avatarId);
+        }
+      }
+    }
 
     // Entrada
     fadeAnim.setValue(0);
@@ -77,10 +91,26 @@ export default function ChatToastItem({ message, onComplete }) {
           elevation: 6,
         }}
       >
-        <Image
-          source={{ uri: message.player?.avatarUrl || `https://i.pravatar.cc/40?u=${message.player?.id}` }}
-          style={{ width: 28, height: 28, borderRadius: 14, marginRight: 8 }}
-        />
+        {getAvatarUrl(message.player?.username) ? (
+          <Image
+            source={{ 
+              uri: getAvatarUrl(message.player?.username)
+            }}
+            style={{ width: 28, height: 28, borderRadius: 14, marginRight: 8 }}
+          />
+        ) : (
+          <View style={{
+            width: 28,
+            height: 28,
+            borderRadius: 14,
+            marginRight: 8,
+            backgroundColor: '#f0f0f0',
+            justifyContent: 'center',
+            alignItems: 'center'
+          }}>
+            <Text style={{ fontSize: 14, color: '#666' }}>👤</Text>
+          </View>
+        )}
         <View style={{ flexShrink: 1 }}>
           <Text
             style={{

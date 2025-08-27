@@ -9,12 +9,21 @@ import socket from '../src/socket';
 import { Bingo } from '../src/games';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { ChatPanel, ChatButton, ChatToasts } from '../src/components';
+import { useAvatarSync } from '../src/hooks/useAvatarSync';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system';
+import { getUsername } from '../src/utils';
+import avatarCache from '../src/avatarCache';
+import { useMyAvatar } from '../src/hooks/useMyAvatar';
 
 export default function Game() {
   const insets = useSafeAreaInsets();
+  const { syncPlayers, getAvatarUrl, syncAvatar, setLocalAvatarUrl } = useAvatarSync();
+  const { myAvatar, myUsername, myName } = useMyAvatar(); // Hook para mi avatar local
   const [state, setState] = useState({ roomId: null, players: [], drawn: [], lastBall: null, hostId: null, figuresClaimed: {}, specificClaims: {}, speed: 1 });
   const [localMarks, setLocalMarks] = useState({}); // cardIndex -> 5x5 bool
   const [me, setMe] = useState(null);
+  const [myAvatarLoaded, setMyAvatarLoaded] = useState(false); // Para controlar si ya cargamos el avatar
   const [announce, setAnnounce] = useState(null); // {playerName, playerAvatar, figures}
   const [announceQueue, setAnnounceQueue] = useState([]); // Cola de anuncios
   const [showGameSummary, setShowGameSummary] = useState(false);
@@ -44,9 +53,29 @@ export default function Game() {
   
   const prevLastBall = useRef(null);
 
+  // Ref para mantener la lista anterior de jugadores y evitar sincronizaciones innecesarias
+  const previousPlayersRef = useRef([]);
+
   useEffect(() => {
     socket.on('state', (s) => {
       setState(s);
+      
+      // Solo sincronizar avatares si los jugadores han cambiado
+      if (s.players && Array.isArray(s.players)) {
+        const currentPlayerIds = s.players.map(p => p.id).sort();
+        const previousPlayerIds = previousPlayersRef.current.map(p => p.id).sort();
+        
+        // Comparar si han cambiado los jugadores
+        const playersChanged = currentPlayerIds.length !== previousPlayerIds.length ||
+          currentPlayerIds.some((id, index) => id !== previousPlayerIds[index]);
+        
+        if (playersChanged) {
+          console.log('🔄 Game - Players changed, syncing avatars:', s.players.length);
+          syncPlayers(s.players);
+          previousPlayersRef.current = s.players;
+        }
+      }
+      
       // Actualizar estado de jugadores listos
       if (s.playersReady) {
         const readyObj = {};
@@ -73,6 +102,12 @@ export default function Game() {
       setShowGameSummary(true);
     });
     socket.on('announcement', (payload) => {
+      // Sincronizar avatar del jugador del anuncio
+      if (payload?.playerUsername && payload?.playerAvatarId) {
+        console.log('🔄 Game - Syncing announcement avatar:', payload.playerUsername, payload.playerAvatarId);
+        syncAvatar(payload.playerUsername, payload.playerAvatarId);
+      }
+      
       // Asegurar que los anuncios se muestren de a UNO
       // Forzar que 'full' (cartón lleno) vaya siempre al final del grupo (particionado estable)
       if (payload && Array.isArray(payload.figures) && payload.figures.length > 0) {
@@ -185,7 +220,103 @@ export default function Game() {
     };
   }, [stopAnimations]);
 
-  const myPlayer = useMemo(() => state.players.find(p => p.id === me), [state.players, me]);
+  const myPlayer = useMemo(() => {
+    const player = state.players.find(p => p.id === me);
+    if (player) {
+      // Si tenemos datos del hook useMyAvatar, usarlos como backup
+      return {
+        ...player,
+        name: player.name || myName || null,
+        username: player.username || myUsername || null
+      };
+    }
+    
+    // Si no encontramos el jugador en el estado, crear uno temporal con datos del hook
+    return {
+      id: me,
+      name: myName || null,
+      username: myUsername || null,
+      avatarId: null,
+      cards: []
+    };
+  }, [state.players, me, myName, myUsername]);
+
+  // Cargar datos locales del jugador (nombre y username) cuando no están en el estado
+  useEffect(() => {
+    const loadPlayerData = async () => {
+      if (myPlayer && (!myPlayer.name || !myPlayer.username)) {
+        try {
+          const [savedName, savedUsername] = await Promise.all([
+            AsyncStorage.getItem('profile:name'),
+            getUsername()
+          ]);
+          
+          console.log('🔄 Game - Loading player data:', { savedName, savedUsername });
+          
+          // Aquí no podemos modificar el estado directamente, pero podemos loguear para debug
+          if (savedName && savedUsername) {
+            console.log('⚡ Game - Player data loaded:', { name: savedName, username: savedUsername });
+          }
+        } catch (error) {
+          console.error('❌ Error loading player data:', error);
+        }
+      }
+    };
+    
+    loadPlayerData();
+  }, [myPlayer?.name, myPlayer?.username]);
+
+  // Sincronizar mi propio avatar cuando se carga mi jugador
+  useEffect(() => {
+    if (myPlayer && myPlayer.username && myPlayer.avatarId) {
+      console.log('🔄 Game - Syncing my own avatar:', myPlayer.username, myPlayer.avatarId);
+      syncAvatar(myPlayer.username, myPlayer.avatarId);
+    }
+  }, [myPlayer?.username, myPlayer?.avatarId, syncAvatar]);
+
+  // Establecer mi avatar local en el caché cuando esté disponible
+  useEffect(() => {
+    if (myAvatar && myUsername) {
+      console.log('⚡ Game - Setting my avatar from useMyAvatar hook:', myUsername);
+      setLocalAvatarUrl(myUsername, myAvatar);
+    }
+  }, [myAvatar, myUsername, setLocalAvatarUrl]);
+
+  // Recargar avatar cuando regresamos al juego (por si lo actualizamos en perfil)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      console.log('🔄 Game - Screen focused, checking for avatar updates...');
+      // Recargar avatar por si se actualizó desde perfil
+      const recheckAvatar = async () => {
+        try {
+          const myUsername = await getUsername();
+          const savedAvatarPath = await AsyncStorage.getItem('profile:avatar');
+          
+          if (myUsername && savedAvatarPath) {
+            const base64 = await FileSystem.readAsStringAsync(savedAvatarPath, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+            const avatarBase64 = `data:image/jpeg;base64,${base64}`;
+            
+            // Actualizar caché con el avatar más reciente
+            const tempAvatarId = `local_${myUsername}_${Date.now()}`;
+            await avatarCache.setAvatar(myUsername, tempAvatarId, avatarBase64);
+            
+            // También establecer inmediatamente en el hook
+            setLocalAvatarUrl(myUsername, avatarBase64);
+            
+            console.log('⚡ Game - Avatar updated after screen focus');
+          }
+        } catch (error) {
+          console.error('❌ Error rechecking avatar:', error);
+        }
+      };
+      
+      recheckAvatar();
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
   // Función para obtener figuras completadas por este jugador usando utilidad del bingo
   const getMyCompletedFigures = useCallback(() => {
@@ -283,20 +414,56 @@ export default function Game() {
     setChatVisible(!chatVisible);
   };
 
-  const handleSendMessage = (messageData) => {
-    if (!myPlayer) return;
+  const handleSendMessage = async (messageData) => {
+    if (!myPlayer && !myUsername) return;
+
+    console.log('📤 Game - Sending message with my data:', {
+      hookUsername: myUsername,
+      hookName: myName,
+      serverPlayer: myPlayer?.username,
+      hasAvatar: !!myAvatar
+    });
+
+    // Usar datos del hook useMyAvatar como primera opción
+    let username = myUsername;
+    let name = myName;
+    let avatarId = myPlayer?.avatarId || null; // Usar el avatarId real del servidor
+
+    // Si tenemos avatar del hook, asegurarnos de que esté en el caché
+    if (username && myAvatar) {
+      console.log('📤 Game - Setting local avatar in cache before sending message');
+      setLocalAvatarUrl(username, myAvatar);
+    }
+
+    // Si no tenemos datos del hook, usar datos del servidor
+    if (!username && myPlayer) {
+      username = myPlayer.username;
+      name = myPlayer.name;
+      avatarId = myPlayer.avatarId;
+    }
+
+    // Fallback final a AsyncStorage
+    if (!username || !name) {
+      const [currentUsername, currentName] = await Promise.all([
+        getUsername(),
+        AsyncStorage.getItem('profile:name')
+      ]);
+      username = username || currentUsername;
+      name = name || currentName;
+    }
 
     const fullMessage = {
       ...messageData,
       player: {
         id: me,
-        name: myPlayer.name,
-        avatarUrl: myPlayer.avatarUrl
+        name: name,
+        username: username,
+        avatarId: avatarId // Puede ser null si usamos datos del hook
       },
       timestamp: Date.now()
     };
 
-    console.log('Game - Sending chat message:', fullMessage);
+    console.log('📤 Game - Sending chat message with final data:', fullMessage);
     socket.emit('sendChatMessage', { roomId: state.roomId || params.roomId, message: fullMessage });
     setChatVisible(false);
   };
@@ -313,11 +480,11 @@ export default function Game() {
     <View style={{ paddingHorizontal: 0 }} onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}>
       <View style={{ backgroundColor: '#2c3e50', borderBottomLeftRadius: 28, borderBottomRightRadius: 28, paddingTop: insets.top + 8, paddingBottom: 16, paddingHorizontal: 0, minHeight: 160 }}>
         {/* fila superior: Home y Velocidad juntos a la izquierda, con padding lateral */}
-        <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'flex-start', paddingHorizontal: 16 }}>
+        <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingHorizontal: 16 }}>
           <TouchableOpacity onPress={() => setShowExit(true)} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor:'#fff', alignItems:'center', justifyContent:'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
             <Ionicons name="home" size={24} color="#2c3e50" />
           </TouchableOpacity>
-          <View style={{ width: 12 }} />
+          <View style={{ flexDirection:'row', alignItems:'center' }}>
           {state.hostId === me ? (
             <TouchableOpacity onPress={() => {
               const list = [0.5, 1, 1.5, 2];
@@ -333,6 +500,11 @@ export default function Game() {
               <Text style={{ fontWeight:'700', color:'#2c3e50', fontSize: 14, fontFamily: 'Montserrat_700Bold' }}>{(state.speed||1)}x</Text>
             </View>
           )}
+          <View style={{ width: 12 }} />
+          <TouchableOpacity onPress={() => router.push({ pathname: '/leaderboard', params: { gameKey: 'bingo' } })} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor:'#fff', alignItems:'center', justifyContent:'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
+            <MaterialCommunityIcons name="podium" size={22} color="#2c3e50" />
+          </TouchableOpacity>
+          </View>
         </View>
 
         {/* bola central animada */}
@@ -575,8 +747,11 @@ export default function Game() {
                     borderWidth: 2,
                     borderColor: isReady ? '#27ae60' : '#ecf0f1'
                   }}>
-                    {player.avatarUrl ? (
-                      <Image source={{ uri: player.avatarUrl }} style={{ width: 40, height: 40, borderRadius: 20, marginRight: 12 }} />
+                    {getAvatarUrl(player.username) ? (
+                      <Image 
+                        source={{ uri: getAvatarUrl(player.username) }} 
+                        style={{ width: 40, height: 40, borderRadius: 20, marginRight: 12 }} 
+                      />
                     ) : (
                       <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#3498db', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
                         <Text style={{ color: 'white', fontWeight: '700', fontFamily: 'Montserrat_700Bold' }}>{player.name?.[0]?.toUpperCase() || '?'}</Text>
@@ -668,9 +843,9 @@ export default function Game() {
             shadowOffset: { width: 0, height: 8 },
             elevation: 12
           }}>
-            {announce?.playerAvatar ? (
+            {getAvatarUrl(announce?.playerUsername) ? (
               <View style={{ marginBottom: 16, borderRadius: 50, overflow: 'hidden', borderWidth: 4, borderColor: '#27ae60' }}>
-                <Image source={{ uri: announce.playerAvatar }} style={{ width: 90, height: 90 }} />
+                <Image source={{ uri: getAvatarUrl(announce.playerUsername) }} style={{ width: 90, height: 90 }} />
               </View>
             ) : (
               <View style={{ width: 90, height: 90, borderRadius: 45, backgroundColor: '#27ae60', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
@@ -704,7 +879,26 @@ export default function Game() {
           const labelMap = { corners:'Esq', row:'Lín', column:'Col', diagonal:'Diag', border:'Contorno', full:'Lleno' };
           return (
             <View key={key} style={{ flexDirection:'row', backgroundColor:'rgba(255,255,255,0.9)', paddingVertical:4, paddingHorizontal:8, borderRadius:12, marginBottom:4, alignItems:'center' }}>
-              {p?.avatarUrl ? <Image source={{ uri: p.avatarUrl }} style={{ width: 18, height: 18, borderRadius: 9, marginRight: 6 }} /> : null}
+              {p?.avatarId && getAvatarUrl(p.username) ? (
+                <View style={{ width: 18, height: 18, borderRadius: 9, marginRight: 6 }}>
+                  <Image 
+                    source={{ uri: getAvatarUrl(p.username) }} 
+                    style={{ width: 18, height: 18, borderRadius: 9 }} 
+                  />
+                </View>
+              ) : (
+                <View style={{ 
+                  width: 18, 
+                  height: 18, 
+                  borderRadius: 9, 
+                  marginRight: 6, 
+                  backgroundColor: '#f0f0f0',
+                  justifyContent: 'center',
+                  alignItems: 'center'
+                }}>
+                  <Text style={{ fontSize: 10, color: '#666' }}>👤</Text>
+                </View>
+              )}
               <Text style={{ fontSize:12, fontWeight:'bold', fontFamily: 'Montserrat_700Bold' }}>{labelMap[key]}: {p?.name || ''}</Text>
             </View>
           );

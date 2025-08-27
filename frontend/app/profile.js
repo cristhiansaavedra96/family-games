@@ -4,25 +4,68 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+import * as Updates from 'expo-updates';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import socket from '../src/socket';
+import { getUsername } from '../src/utils';
 
 export default function Profile() {
   const [name, setName] = useState('');
   const [avatar, setAvatar] = useState(null);
+  const [avatarBase64, setAvatarBase64] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [username, setUsername] = useState(null);
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+
+  // Estados para actualizaciones
+  const {
+    isUpdateAvailable,
+    isUpdatePending
+  } = Updates.useUpdates();
 
   // Cargar datos existentes
   useEffect(() => {
     loadProfile();
+    
+    // Monitorear conexión del socket
+    const onConnect = () => setSocketConnected(true);
+    const onDisconnect = () => setSocketConnected(false);
+    
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    setSocketConnected(socket.connected);
+    
+    return () => {
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+    };
   }, []);
 
   const loadProfile = async () => {
     try {
       const savedName = await AsyncStorage.getItem('profile:name');
       const savedAvatar = await AsyncStorage.getItem('profile:avatar');
+      const currentUsername = await getUsername();
+      
       if (savedName) setName(savedName);
-      if (savedAvatar) setAvatar(savedAvatar);
+      if (savedAvatar) {
+        setAvatar(savedAvatar);
+        // Si tenemos avatar local, convertir a base64 para enviar al servidor
+        try {
+          console.log('🔄 Converting saved avatar to base64...');
+          const base64 = await FileSystem.readAsStringAsync(savedAvatar, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          console.log('✅ Saved avatar converted to base64, size:', base64.length, 'characters');
+          setAvatarBase64(`data:image/jpeg;base64,${base64}`);
+        } catch (e) {
+          console.error('❌ Error converting saved avatar to base64:', e);
+        }
+      }
+      if (currentUsername) setUsername(currentUsername);
     } catch (error) {
       console.log('Error loading profile:', error);
     }
@@ -40,11 +83,52 @@ export default function Profile() {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: 0.3, // Reducir de 0.8 a 0.3 para menor tamaño
+        base64: true, // Obtener base64 directamente del picker
       });
 
       if (!result.canceled && result.assets[0]) {
-        setAvatar(result.assets[0].uri);
+        const asset = result.assets[0];
+        const uri = asset.uri;
+        console.log('📸 Image picked:', uri);
+        setAvatar(uri);
+        
+        // Usar base64 directamente del ImagePicker (más eficiente y comprimido)
+        if (asset.base64) {
+          console.log('🔄 Using base64 from ImagePicker...');
+          const base64 = asset.base64;
+          console.log('✅ Direct base64 size:', base64.length, 'characters');
+          
+          // Verificar si aún es demasiado grande
+          const sizeInMB = base64.length / 1024 / 1024;
+          if (sizeInMB > 0.5) {
+            console.warn('⚠️ Avatar base64 is still large:', sizeInMB.toFixed(2), 'MB');
+            // Podrías mostrar un warning al usuario o comprimir más
+          }
+          
+          setAvatarBase64(`data:image/jpeg;base64,${base64}`);
+          console.log('✅ Avatar base64 set successfully');
+        } else {
+          // Fallback al método anterior si no hay base64 directo
+          console.log('🔄 Converting image to base64 (fallback)...');
+          try {
+            const base64 = await FileSystem.readAsStringAsync(uri, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+            console.log('✅ Fallback base64 conversion, size:', base64.length, 'characters');
+            
+            const sizeInMB = base64.length / 1024 / 1024;
+            if (sizeInMB > 0.5) {
+              console.warn('⚠️ Avatar base64 is large:', sizeInMB.toFixed(2), 'MB');
+            }
+            
+            setAvatarBase64(`data:image/jpeg;base64,${base64}`);
+            console.log('✅ Avatar base64 set successfully (fallback)');
+          } catch (e) {
+            console.error('❌ Error converting image to base64:', e);
+            Alert.alert('Error', 'No se pudo procesar la imagen');
+          }
+        }
       }
     } catch (error) {
       Alert.alert('Error', 'No se pudo seleccionar la imagen');
@@ -57,15 +141,137 @@ export default function Profile() {
       return;
     }
 
+    if (!username) {
+      Alert.alert('Error', 'No se encontró nombre de usuario');
+      return;
+    }
+
     setIsLoading(true);
+    
     try {
+      // Debugs del avatar antes de enviarlo
+      console.log('💾 Starting profile save...');
+      console.log('👤 Username:', username);
+      console.log('📝 Name:', name.trim());
+      console.log('🖼️ Has avatar:', !!avatar);
+      console.log('📦 Has avatarBase64:', !!avatarBase64);
+      
+      if (avatarBase64) {
+        console.log('📊 Avatar base64 size:', avatarBase64.length, 'characters');
+        console.log('📊 Avatar base64 size in MB:', (avatarBase64.length / 1024 / 1024).toFixed(2));
+        console.log('🔍 Avatar base64 starts with:', avatarBase64.substring(0, 50));
+      }
+      
+      // Guardar localmente primero
       await AsyncStorage.setItem('profile:name', name.trim());
       if (avatar) {
         await AsyncStorage.setItem('profile:avatar', avatar);
       }
+
+      // Asegurar conexión del socket con reintentos
+      let attempts = 0;
+      const maxAttempts = 3;
+      
+      while (!socket.connected && attempts < maxAttempts) {
+        attempts++;
+        console.log(`Attempting socket connection ${attempts}/${maxAttempts}...`);
+        
+        socket.connect();
+        
+        // Esperar hasta que se conecte o timeout
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            socket.off('connect', onConnect);
+            reject(new Error(`Connection attempt ${attempts} failed`));
+          }, 3000);
+          
+          const onConnect = () => {
+            clearTimeout(timeout);
+            socket.off('connect', onConnect);
+            console.log('Socket connected successfully');
+            resolve();
+          };
+          
+          if (socket.connected) {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            socket.on('connect', onConnect);
+          }
+        });
+      }
+
+      if (!socket.connected) {
+        throw new Error('No se pudo conectar al servidor después de varios intentos');
+      }
+
+      console.log('🚀 Sending updateProfile to server...');
+      console.log('📤 Data to send:', { 
+        username, 
+        name: name.trim(), 
+        hasAvatar: !!avatarBase64,
+        avatarSizeKB: avatarBase64 ? (avatarBase64.length / 1024).toFixed(2) : 0
+      });
+
+      // Preparar los datos
+      const profileData = {
+        username,
+        name: name.trim(),
+        avatarUrl: avatarBase64 || null
+      };
+
+      console.log('📦 Profile data prepared, sending via socket...');
+
+      // Validación final de tamaño antes de enviar
+      if (avatarBase64 && avatarBase64.length > 800 * 1024) { // Máximo 800KB
+        console.error('❌ Avatar too large for transmission:', (avatarBase64.length / 1024).toFixed(2), 'KB');
+        Alert.alert(
+          'Imagen muy grande', 
+          'La imagen seleccionada es demasiado grande. Por favor, selecciona una imagen más pequeña.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      console.log('✅ Avatar size validated, proceeding with upload...');
+
+      // Enviar al servidor con timeout más largo
+      const response = await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          console.error('⏰ Timeout waiting for server response');
+          reject(new Error('Timeout'));
+        }, 15000); // 15 segundos
+
+        console.log('🔌 About to emit updateProfile event...');
+        
+        socket.emit('updateProfile', profileData, (response) => {
+          clearTimeout(timeout);
+          console.log('📥 Profile update response received:', response);
+          
+          if (response?.ok) {
+            resolve(response);
+          } else {
+            reject(new Error(response?.error || 'Error del servidor'));
+          }
+        });
+      });
+      
+      console.log('Profile updated successfully:', response.player);
       router.replace('/games');
+
     } catch (error) {
-      Alert.alert('Error', 'No se pudo guardar el perfil');
+      console.error('Error saving profile:', error);
+      
+      let errorMessage = 'No se pudo guardar el perfil';
+      if (error.message === 'Timeout') {
+        errorMessage = 'Tiempo de espera agotado. El servidor puede estar ocupado, intenta de nuevo.';
+      } else if (error.message.includes('conectar')) {
+        errorMessage = 'No se pudo conectar al servidor. Verifica tu conexión a internet.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      Alert.alert('Error', errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -74,6 +280,51 @@ export default function Profile() {
   const getInitials = () => {
     return name.trim().split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?';
   };
+
+  // Funciones para actualizaciones
+  const checkForUpdates = async () => {
+    setIsCheckingUpdates(true);
+    try {
+      const update = await Updates.checkForUpdateAsync();
+      if (!update.isAvailable) {
+        Alert.alert('Actualizaciones', 'No hay actualizaciones disponibles');    
+      } else {
+        Alert.alert('Actualización disponible', 'Se encontró una actualización disponible');
+      }
+    } catch (error) {
+      console.log(`Error checking for updates: ${error}`);
+      Alert.alert('Error', 'No se pudo verificar actualizaciones');
+    } finally {
+      setIsCheckingUpdates(false);
+    }
+  };
+
+  const onFetchUpdateAsync = async () => {
+    try {
+      const update = await Updates.checkForUpdateAsync();
+      if (update.isAvailable) {
+        Alert.alert(
+          'Actualización disponible',
+          '¿Deseas descargar e instalar la actualización ahora?',
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+              text: 'Actualizar',
+              onPress: async () => {
+                await Updates.fetchUpdateAsync();
+                await Updates.reloadAsync();
+              }
+            }
+          ]
+        );
+      }
+    } catch (error) {
+      console.log(`Error fetching update: ${error}`);
+      Alert.alert('Error', 'No se pudo descargar la actualización');
+    }
+  };
+
+  const showDownloadButton = isUpdateAvailable || isUpdatePending;
 
   return (
     <>
@@ -112,6 +363,36 @@ export default function Profile() {
               >
                 <Ionicons name="arrow-back" size={20} color="white" />
               </TouchableOpacity>
+
+              {/* Connection status indicator */}
+              <View style={{
+                position: 'absolute',
+                top: 60,
+                right: 20,
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: socketConnected ? 'rgba(76, 175, 80, 0.2)' : 'rgba(244, 67, 54, 0.2)',
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: socketConnected ? 'rgba(76, 175, 80, 0.5)' : 'rgba(244, 67, 54, 0.5)'
+              }}>
+                <View style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: socketConnected ? '#4CAF50' : '#F44336',
+                  marginRight: 6
+                }} />
+                <Text style={{
+                  fontSize: 12,
+                  color: 'white',
+                  fontFamily: 'Montserrat_500Medium'
+                }}>
+                  {socketConnected ? 'Conectado' : 'Desconectado'}
+                </Text>
+              </View>
 
               <View style={{ alignItems: 'center' }}>
                 <Text style={{
@@ -262,17 +543,17 @@ export default function Profile() {
         <View style={{ paddingHorizontal: 20, marginBottom: 40 }}>
           <TouchableOpacity
             onPress={saveProfile}
-            disabled={!name.trim() || isLoading}
+            disabled={!name.trim() || isLoading || !socketConnected}
             style={{
-              backgroundColor: name.trim() ? '#34495e' : '#bdc3c7',
+              backgroundColor: (name.trim() && socketConnected) ? '#34495e' : '#bdc3c7',
               borderRadius: 16,
               paddingVertical: 18,
               alignItems: 'center',
-              shadowColor: name.trim() ? '#34495e' : 'transparent',
+              shadowColor: (name.trim() && socketConnected) ? '#34495e' : 'transparent',
               shadowOpacity: 0.3,
               shadowRadius: 8,
               shadowOffset: { width: 0, height: 4 },
-              elevation: name.trim() ? 8 : 0
+              elevation: (name.trim() && socketConnected) ? 8 : 0
             }}
             activeOpacity={0.8}
           >
@@ -286,6 +567,19 @@ export default function Profile() {
                   fontFamily: 'Montserrat_700Bold'
                 }}>
                   Guardando...
+                </Text>
+              </View>
+            ) : !socketConnected ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Ionicons name="cloud-offline" size={24} color="white" />
+                <Text style={{
+                  fontSize: 18,
+                  fontWeight: '700',
+                  color: 'white',
+                  marginLeft: 8,
+                  fontFamily: 'Montserrat_700Bold'
+                }}>
+                  Sin Conexión
                 </Text>
               </View>
             ) : (
@@ -303,6 +597,76 @@ export default function Profile() {
               </View>
             )}
           </TouchableOpacity>
+        </View>
+
+        {/* Sección de Actualizaciones */}
+        <View style={{ marginTop: 0, paddingHorizontal: 20 }}>
+
+          {/* Botón Verificar Actualizaciones */}
+          <TouchableOpacity
+            onPress={checkForUpdates}
+            disabled={isCheckingUpdates}
+            style={{
+              backgroundColor: isCheckingUpdates ? '#bdc3c7' : '#3498db',
+              borderRadius: 12,
+              paddingVertical: 20,
+              alignItems: 'center',
+              shadowColor: '#000',
+              shadowOpacity: 0.1,
+              shadowRadius: 8,
+              shadowOffset: { width: 0, height: 2 },
+              elevation: 4,
+              opacity: isCheckingUpdates ? 0.7 : 1
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {isCheckingUpdates ? (
+                <View style={{ width: 20, height: 20, justifyContent: 'center', alignItems: 'center' }}>
+                  <Text style={{ color: 'white', fontSize: 16 }}>⟳</Text>
+                </View>
+              ) : (
+                <Ionicons name="refresh" size={20} color="white" />
+              )}
+              <Text style={{
+                fontSize: 16,
+                fontWeight: '600',
+                color: 'white',
+                marginLeft: 8
+              }}>
+                {isCheckingUpdates ? 'Verificando...' : 'Verificar Actualizaciones'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* Botón Descargar Actualización (solo si hay actualización disponible) */}
+          {showDownloadButton && (
+            <TouchableOpacity
+              onPress={onFetchUpdateAsync}
+              style={{
+                backgroundColor: '#e74c3c',
+                borderRadius: 12,
+                paddingVertical: 16,
+                alignItems: 'center',
+                shadowColor: '#000',
+                shadowOpacity: 0.1,
+                shadowRadius: 8,
+                shadowOffset: { width: 0, height: 2 },
+                elevation: 4
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Ionicons name="download" size={20} color="white" />
+                <Text style={{
+                  fontSize: 16,
+                  fontWeight: '600',
+                  color: 'white',
+                  marginLeft: 8
+                }}>
+                  Descargar Actualización
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
         </View>
         
         </ScrollView>

@@ -6,7 +6,10 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "updates": {
-      "fallbackToCacheTimeout": 0
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 10000,
+      "url": "https://u.expo.dev/d443c4ff-0a55-4aba-acf5-9fdd6bbc5034"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -31,7 +34,11 @@
     },
     "plugins": [
       "expo-router",
-      "expo-font"
-    ]
+      "expo-font",
+      "expo-updates"
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    }
   }
 }
