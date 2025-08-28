@@ -6,20 +6,9 @@ const ExitModal = ({
   onClose, 
   onConfirm 
 }) => {
-  // Logging para detectar conflictos
-  console.log(`[ExitModal] Render`, {
-    visible,
-    onCloseExists: typeof onClose === 'function',
-    onConfirmExists: typeof onConfirm === 'function',
-    timestamp: new Date().toISOString()
-  });
-
   if (!visible) {
-    console.log(`[ExitModal] No visible, no renderizando contenido`);
     return null;
   }
-
-  console.log(`[ExitModal] Modal visible, renderizando contenido completo`);
 
   // VERSIÓN DE PRUEBA: Usar View absoluto en lugar de Modal
   // Si esto funciona, confirma que es un problema con el Modal component
@@ -75,7 +64,6 @@ const ExitModal = ({
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <TouchableOpacity 
               onPress={() => {
-                console.log(`[ExitModal] Botón Cancelar presionado (Absolute View)`);
                 onClose && onClose();
               }} 
               style={{ 
@@ -98,7 +86,6 @@ const ExitModal = ({
             
             <TouchableOpacity 
               onPress={() => {
-                console.log(`[ExitModal] Botón Salir presionado (Absolute View)`);
                 onConfirm && onConfirm();
               }} 
               style={{ 
@@ -131,7 +118,6 @@ const ExitModal = ({
       animationType="fade"
       statusBarTranslucent={false}
       onRequestClose={() => {
-        console.log(`[ExitModal] onRequestClose ejecutado`);
         onClose && onClose();
       }}
     >
@@ -180,7 +166,6 @@ const ExitModal = ({
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <TouchableOpacity 
               onPress={() => {
-                console.log(`[ExitModal] Botón Cancelar presionado`);
                 onClose && onClose();
               }} 
               style={{ 
@@ -203,7 +188,6 @@ const ExitModal = ({
             
             <TouchableOpacity 
               onPress={() => {
-                console.log(`[ExitModal] Botón Salir presionado`);
                 onConfirm && onConfirm();
               }} 
               style={{ 

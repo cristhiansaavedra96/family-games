@@ -27,8 +27,6 @@ export const useAvatarSync = () => {
     setLoading(prev => new Set(prev.add(loadingKey)));
 
     try {
-      console.log(`🔄 Requesting avatar from server: ${username} -> ${avatarId}`);
-      
       // Solicitar avatar al servidor
       socket.emit('getAvatar', { avatarId }, async (response) => {
         setLoading(prev => {
@@ -45,8 +43,6 @@ export const useAvatarSync = () => {
           
           // Actualizar estado
           setAvatarUrls(prev => new Map(prev.set(username, avatarUrl)));
-          
-          console.log(`✅ Avatar synced: ${username} -> ${avatarId}`);
         } else {
           console.warn(`❌ Failed to sync avatar: ${username} -> ${avatarId}:`, response.error);
         }
@@ -82,7 +78,6 @@ export const useAvatarSync = () => {
   // Función para establecer avatar manualmente (para casos locales)
   const setLocalAvatarUrl = useCallback((username, avatarUrl) => {
     if (username && avatarUrl) {
-      console.log(`💾 Setting local avatar: ${username}`);
       setAvatarUrls(prev => new Map(prev.set(username, avatarUrl)));
     }
   }, []);

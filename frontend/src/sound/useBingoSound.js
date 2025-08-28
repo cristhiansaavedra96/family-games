@@ -42,7 +42,6 @@ export function useBingoSound() {
       bg.loop = true;
       if (typeof bg.setLooping === 'function') bg.setLooping(true);
       if (typeof bg.setIsLooping === 'function') bg.setIsLooping(true);
-      console.log(bg.loop);
     } catch (error) {
       console.warn('Error configurando background:', error);
     }
@@ -130,14 +129,12 @@ export function useBingoSound() {
   }, [bg]);
 
   const playEffect = (type) => {
-    console.log(type, assetsReady, effectsMutedRef.current)
     if (effectsMutedRef.current) return;
     
     const now = Date.now();
     const { type: lastType, at } = lastEffectRef.current || {};
     if (type === 'logro' && lastType === 'win' && now - at < 1500) return;
     if (lastType === type && now - at < 200) return;
-    console.log(sSelect)
     try {
       if (type === 'start' && sStart) { 
         if ('volume' in sStart) sStart.volume = defaultEffectVolumes.current.start; 

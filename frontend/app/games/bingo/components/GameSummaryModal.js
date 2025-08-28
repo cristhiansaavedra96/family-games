@@ -11,19 +11,9 @@ const GameSummaryModal = ({
   onClose, 
   onPlayAgain 
 }) => {
-  // Logging para detectar conflictos
-  console.log(`[GameSummaryModal] Render`, {
-    visible,
-    playersCount: players?.length || 0,
-    timestamp: new Date().toISOString()
-  });
-
   if (!visible) {
-    console.log(`[GameSummaryModal] No visible, no renderizando contenido`);
     return null;
   }
-
-  console.log(`[GameSummaryModal] Modal visible, renderizando contenido completo`);
 
   // Función para calcular puntos según las figuras reclamadas
   const calculatePoints = (playerFigures) => {
@@ -240,7 +230,7 @@ const GameSummaryModal = ({
         backgroundColor: '#e6ecf5', 
         borderRadius: 24, 
         padding: 0, 
-        maxWidth: '95%',
+        width: '90%', // 🔧 Ancho fijo al 90%
         maxHeight: '90%',
         shadowColor: '#000',
         shadowOpacity: 0.25,
@@ -330,7 +320,6 @@ const GameSummaryModal = ({
         }}>
           <TouchableOpacity 
             onPress={() => {
-              console.log(`[GameSummaryModal] Botón Salir presionado (Absolute View)`);
               onClose && onClose();
             }}
             style={{ 
@@ -363,7 +352,6 @@ const GameSummaryModal = ({
           
           <TouchableOpacity 
             onPress={() => {
-              console.log(`[GameSummaryModal] Botón Volver a Jugar presionado (Absolute View)`);
               onPlayAgain && onPlayAgain();
             }}
             style={{ 

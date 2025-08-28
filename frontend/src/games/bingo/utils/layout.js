@@ -100,8 +100,6 @@ export function checkFigures(marked) {
     full: false
   };
   
-  console.log('checkFigures: evaluando matriz:', marked.map(row => row.map(cell => cell ? '1' : '0').join('')));
-  
   // Verificar esquinas
   flags.corners = marked[0][0] && marked[0][4] && marked[4][0] && marked[4][4];
   
@@ -109,7 +107,6 @@ export function checkFigures(marked) {
   for (let r = 0; r < 5; r++) {
     if (marked[r].every(cell => cell)) {
       flags.row = true;
-      console.log(`checkFigures: fila ${r} completada`);
       break;
     }
   }
@@ -118,7 +115,6 @@ export function checkFigures(marked) {
   for (let c = 0; c < 5; c++) {
     if (marked.every(row => row[c])) {
       flags.column = true;
-      console.log(`checkFigures: columna ${c} completada`);
       break;
     }
   }
@@ -137,9 +133,5 @@ export function checkFigures(marked) {
   
   // Verificar cartón lleno
   flags.full = marked.every(row => row.every(cell => cell));
-  
-  const completedFigures = Object.entries(flags).filter(([key, value]) => value).map(([key]) => key);
-  console.log('checkFigures: figuras completadas:', completedFigures);
-  
   return flags;
 }

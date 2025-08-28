@@ -22,7 +22,6 @@ export default function ChatToastItem({ message, onComplete }) {
       if (!message.player.avatarId.startsWith('local_')) {
         const currentAvatarUrl = getAvatarUrl(message.player.username);
         if (!currentAvatarUrl) {
-          console.log('🔄 ChatToastItem - Syncing avatar for:', message.player.username, 'avatarId:', message.player.avatarId);
           syncAvatar(message.player.username, message.player.avatarId);
         }
       }

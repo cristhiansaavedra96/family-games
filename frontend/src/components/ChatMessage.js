@@ -9,16 +9,12 @@ export default function ChatMessage({ message, onComplete }) {
 
   useEffect(() => {
     if (!message) return;
-
-    console.log('ChatMessage rendering with:', message);
-
     // Sincronizar avatar si tenemos avatarId válido pero no está en caché
     if (message.player?.avatarId && message.player?.username) {
       // No intentar sincronizar avatarIds temporales (local_*)
       if (!message.player.avatarId.startsWith('local_')) {
         const currentAvatarUrl = getAvatarUrl(message.player.username);
         if (!currentAvatarUrl) {
-          console.log('🔄 ChatMessage - Syncing avatar for:', message.player.username, 'avatarId:', message.player.avatarId);
           syncAvatar(message.player.username, message.player.avatarId);
         }
       }

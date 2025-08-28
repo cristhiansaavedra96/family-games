@@ -15,7 +15,7 @@ export function getBingoColorByIndexOrNumber(num, idx) {
   return '#bdc3c7';
 }
 import React from 'react';
-import { View, Text, TouchableOpacity, Image } from 'react-native';
+import { View, Text, TouchableOpacity, Image, Vibration } from 'react-native';
 function BingoCardBase({ card, drawn, marked, onToggle, compact, cellAspect, size = 'normal', completedFigures = [], cardIndex = 0, specificFigures = [] }) {
   const gridBorder = '#d1d8e0';
   
@@ -168,7 +168,10 @@ function BingoCardBase({ card, drawn, marked, onToggle, compact, cellAspect, siz
                 <TouchableOpacity
                   key={c}
                   activeOpacity={0.7}
-                  onPress={() => onToggle && onToggle(r, c)}
+                  onPress={() => {
+                    Vibration.vibrate(20);
+                    onToggle && onToggle(r, c);
+                  }}
                   disabled={isCenter}
                   style={{ 
                     flex: 1, 

@@ -18,19 +18,11 @@ export const useMyAvatar = () => {
 
   const loadMyData = useCallback(async () => {
     try {
-      console.log('🔄 useMyAvatar - Loading my data...');
-      
       const [username, name, avatarPath] = await Promise.all([
         getUsername(),
         AsyncStorage.getItem('profile:name'),
         AsyncStorage.getItem('profile:avatar')
       ]);
-
-      console.log('📋 useMyAvatar - Data loaded:', {
-        username,
-        name,
-        hasAvatar: !!avatarPath
-      });
 
       setMyUsername(username);
       setMyName(name);
@@ -41,8 +33,6 @@ export const useMyAvatar = () => {
             encoding: FileSystem.EncodingType.Base64,
           });
           const avatarBase64 = `data:image/jpeg;base64,${base64}`;
-          
-          console.log('✅ useMyAvatar - Avatar loaded:', (avatarBase64.length / 1024).toFixed(1), 'KB');
           setMyAvatar(avatarBase64);
         } catch (avatarError) {
           console.error('❌ useMyAvatar - Error loading avatar:', avatarError);

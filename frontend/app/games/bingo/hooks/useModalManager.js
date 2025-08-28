@@ -5,21 +5,7 @@ const useModalManager = () => {
   const [modalQueue, setModalQueue] = useState([]);
   const modalHistory = useRef([]);
 
-  useEffect(() => {
-    console.log(`[ModalManager] Estado cambiado`, {
-      activeModal,
-      queueLength: modalQueue.length,
-      queue: modalQueue,
-      timestamp: new Date().toISOString()
-    });
-  }, [activeModal, modalQueue]);
-
   const showModal = (modalName) => {
-    console.log(`[ModalManager] Solicitando mostrar modal: ${modalName}`, {
-      currentActive: activeModal,
-      timestamp: new Date().toISOString()
-    });
-
     if (!activeModal) {
       setActiveModal(modalName);
       modalHistory.current.push(modalName);
@@ -35,11 +21,6 @@ const useModalManager = () => {
   };
 
   const hideModal = (modalName) => {
-    console.log(`[ModalManager] Solicitando ocultar modal: ${modalName}`, {
-      currentActive: activeModal,
-      timestamp: new Date().toISOString()
-    });
-
     if (activeModal === modalName) {
       setActiveModal(null);
       
@@ -63,7 +44,6 @@ const useModalManager = () => {
   };
 
   const clearAllModals = () => {
-    console.log(`[ModalManager] Limpiando todos los modales`);
     setActiveModal(null);
     setModalQueue([]);
   };

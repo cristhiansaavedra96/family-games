@@ -8,20 +8,9 @@ const NumbersModal = ({
   drawnNumbers = [], 
   onClose 
 }) => {
-  // Logging para detectar problemas
-  console.log(`[NumbersModal] Render`, {
-    visible,
-    drawnNumbersLength: drawnNumbers.length,
-    onCloseExists: typeof onClose === 'function',
-    timestamp: new Date().toISOString()
-  });
-
   if (!visible) {
-    console.log(`[NumbersModal] No visible, no renderizando contenido`);
     return null;
-  }
-
-  console.log(`[NumbersModal] Modal visible, renderizando contenido completo`);
+  }                                             
 
   // Usar View absoluto en lugar de Modal (igual que ExitModal)
   return (
@@ -68,7 +57,6 @@ const NumbersModal = ({
           
           <TouchableOpacity 
             onPress={() => {
-              console.log(`[NumbersModal] Botón cerrar presionado (Absolute View)`);
               onClose && onClose();
             }} 
             style={{ 
@@ -105,13 +93,13 @@ const NumbersModal = ({
                 key={n} 
                 style={[{ 
                   width: itemWidth,
-                  height: itemWidth, // Usar altura fija igual al ancho para mantener proporción cuadrada
+                  aspectRatio: 1, // Volver a aspectRatio para mantener círculos perfectos
                   borderRadius: 16, 
                   backgroundColor: isDrawn ? getBingoColorByIndexOrNumber(n) : '#f8f9fa', 
                   alignItems: 'center', 
                   justifyContent: 'center', 
                   margin: '0.5%',
-                  marginBottom: 8,
+                  marginVertical: 4, // Margen vertical fijo pequeño
                   borderWidth: 1.5, 
                   borderColor: isDrawn ? '#fff' : '#dee2e6',
                   shadowColor: isDrawn ? '#000' : 'transparent',

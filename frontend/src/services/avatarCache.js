@@ -102,21 +102,15 @@ export async function logAvatarCacheStatus() {
     await ensureCacheDir();
     const index = await getCacheIndex();
     const files = await FileSystem.readDirectoryAsync(CACHE_DIR);
-    console.log('--- Avatar Cache Status ---');
-    console.log('Total en índice:', Object.keys(index).length);
     for (const avatarId of Object.keys(index)) {
       const filePath = CACHE_DIR + avatarId + '.jpg';
       const fileInfo = await FileSystem.getInfoAsync(filePath);
       const sizeKB = fileInfo.exists ? (fileInfo.size / 1024).toFixed(1) : 'N/A';
       const fecha = new Date(index[avatarId]).toLocaleString();
-      console.log(`ID: ${avatarId} | Fecha: ${fecha} | Tamaño: ${sizeKB} KB | Existe: ${fileInfo.exists}`);
     }
-    console.log('Archivos en directorio:', files.length);
     for (const file of files) {
       const fileInfo = await FileSystem.getInfoAsync(CACHE_DIR + file);
-      console.log(`Archivo: ${file} | Tamaño: ${(fileInfo.size / 1024).toFixed(1)} KB`);
     }
-    console.log('--------------------------');
   } catch (e) {
     console.warn('Error al inspeccionar el caché de avatares:', e);
   }
@@ -173,7 +167,6 @@ export async function purgeLegacyAvatarCache() {
     const toRemove = keys.filter(k => k.startsWith(LEGACY_PREFIX) || k === LEGACY_INDEX_KEY);
     if (toRemove.length > 0) {
       await AsyncStorage.multiRemove(toRemove);
-      console.log(`🧹 Purged legacy avatar cache keys: ${toRemove.length}`);
     }
   } catch (e) {
     console.warn('Failed purging legacy avatar cache:', e);

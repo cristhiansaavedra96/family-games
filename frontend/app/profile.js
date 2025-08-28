@@ -51,11 +51,9 @@ export default function Profile() {
         setAvatar(savedAvatar);
         // Si tenemos avatar local, convertir a base64 para enviar al servidor
         try {
-          console.log('🔄 Converting saved avatar to base64...');
           const base64 = await FileSystem.readAsStringAsync(savedAvatar, {
             encoding: FileSystem.EncodingType.Base64,
           });
-          console.log('✅ Saved avatar converted to base64, size:', base64.length, 'characters');
           setAvatarBase64(`data:image/jpeg;base64,${base64}`);
         } catch (e) {
           console.error('❌ Error converting saved avatar to base64:', e);
@@ -86,15 +84,11 @@ export default function Profile() {
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
         const uri = asset.uri;
-        console.log('📸 Image picked:', uri);
         setAvatar(uri);
         
         // Usar base64 directamente del ImagePicker (más eficiente y comprimido)
         if (asset.base64) {
-          console.log('🔄 Using base64 from ImagePicker...');
           const base64 = asset.base64;
-          console.log('✅ Direct base64 size:', base64.length, 'characters');
-          
           // Verificar si aún es demasiado grande
           const sizeInMB = base64.length / 1024 / 1024;
           if (sizeInMB > 0.5) {
@@ -103,15 +97,12 @@ export default function Profile() {
           }
           
           setAvatarBase64(`data:image/jpeg;base64,${base64}`);
-          console.log('✅ Avatar base64 set successfully');
         } else {
           // Fallback al método anterior si no hay base64 directo
-          console.log('🔄 Converting image to base64 (fallback)...');
           try {
             const base64 = await FileSystem.readAsStringAsync(uri, {
               encoding: FileSystem.EncodingType.Base64,
             });
-            console.log('✅ Fallback base64 conversion, size:', base64.length, 'characters');
             
             const sizeInMB = base64.length / 1024 / 1024;
             if (sizeInMB > 0.5) {
@@ -119,7 +110,6 @@ export default function Profile() {
             }
             
             setAvatarBase64(`data:image/jpeg;base64,${base64}`);
-            console.log('✅ Avatar base64 set successfully (fallback)');
           } catch (e) {
             console.error('❌ Error converting image to base64:', e);
             Alert.alert('Error', 'No se pudo procesar la imagen');
@@ -145,19 +135,6 @@ export default function Profile() {
     setIsLoading(true);
     
     try {
-      // Debugs del avatar antes de enviarlo
-      console.log('💾 Starting profile save...');
-      console.log('👤 Username:', username);
-      console.log('📝 Name:', name.trim());
-      console.log('🖼️ Has avatar:', !!avatar);
-      console.log('📦 Has avatarBase64:', !!avatarBase64);
-      
-      if (avatarBase64) {
-        console.log('📊 Avatar base64 size:', avatarBase64.length, 'characters');
-        console.log('📊 Avatar base64 size in MB:', (avatarBase64.length / 1024 / 1024).toFixed(2));
-        console.log('🔍 Avatar base64 starts with:', avatarBase64.substring(0, 50));
-      }
-      
       // Guardar localmente primero
       await AsyncStorage.setItem('profile:name', name.trim());
       if (avatar) {
@@ -170,8 +147,6 @@ export default function Profile() {
       
       while (!socket.connected && attempts < maxAttempts) {
         attempts++;
-        console.log(`Attempting socket connection ${attempts}/${maxAttempts}...`);
-        
         socket.connect();
         
         // Esperar hasta que se conecte o timeout
@@ -201,22 +176,12 @@ export default function Profile() {
         throw new Error('No se pudo conectar al servidor después de varios intentos');
       }
 
-      console.log('🚀 Sending updateProfile to server...');
-      console.log('📤 Data to send:', { 
-        username, 
-        name: name.trim(), 
-        hasAvatar: !!avatarBase64,
-        avatarSizeKB: avatarBase64 ? (avatarBase64.length / 1024).toFixed(2) : 0
-      });
-
       // Preparar los datos
       const profileData = {
         username,
         name: name.trim(),
         avatarUrl: avatarBase64 || null
       };
-
-      console.log('📦 Profile data prepared, sending via socket...');
 
       // Validación final de tamaño antes de enviar
       if (avatarBase64 && avatarBase64.length > 800 * 1024) { // Máximo 800KB
@@ -229,20 +194,15 @@ export default function Profile() {
         return;
       }
 
-      console.log('✅ Avatar size validated, proceeding with upload...');
-
       // Enviar al servidor con timeout más largo
       const response = await new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
           console.error('⏰ Timeout waiting for server response');
           reject(new Error('Timeout'));
         }, 15000); // 15 segundos
-
-        console.log('🔌 About to emit updateProfile event...');
         
         socket.emit('updateProfile', profileData, (response) => {
           clearTimeout(timeout);
-          console.log('📥 Profile update response received:', response);
           
           if (response?.ok) {
             resolve(response);
@@ -251,8 +211,6 @@ export default function Profile() {
           }
         });
       });
-      
-      console.log('Profile updated successfully:', response.player);
       router.replace('/gameSelect');
 
     } catch (error) {

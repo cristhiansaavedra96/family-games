@@ -35,17 +35,12 @@ export default function Rooms() {
     try {
       const avatarPath = await AsyncStorage.getItem('profile:avatar');
       if (!avatarPath) {
-        console.log('❌ Rooms - No avatar path found in AsyncStorage');
         return null;
       }
-      
-      console.log('🔄 Converting avatar to base64 for room join...');
       const base64 = await FileSystem.readAsStringAsync(avatarPath, {
         encoding: FileSystem.EncodingType.Base64,
       });
       const avatarBase64 = `data:image/jpeg;base64,${base64}`;
-      console.log('✅ Avatar converted for room join, size:', avatarBase64.length, 'characters');
-      console.log('🔍 Avatar preview:', avatarBase64.substring(0, 100) + '...');
       return avatarBase64;
     } catch (error) {
       console.error('❌ Error converting avatar for room:', error);
@@ -55,12 +50,10 @@ export default function Rooms() {
 
   useEffect(() => {
     const onRooms = (list) => {
-      console.log('📦 Lista de salas recibida:', list.map(r => ({ id: r.id, cardsPerPlayer: r.cardsPerPlayer, players: r.players.length })));
       setRooms(list);
       // Sincronizar avatares de todos los jugadores
       const allPlayers = list.flatMap(room => room.players || []);
       if (allPlayers.length > 0) {
-        // console.log('🔄 Syncing avatars for players in rooms:', allPlayers.length);
         syncPlayers(allPlayers);
       }
     };
@@ -73,7 +66,6 @@ export default function Rooms() {
       try {
         const username = await getUsername();
         setMyUsername(username);
-        console.log('👤 My username loaded for room check:', username);
       } catch (error) {
         console.error('❌ Error loading username:', error);
       }
@@ -88,13 +80,11 @@ export default function Rooms() {
         const savedAvatarPath = await AsyncStorage.getItem('profile:avatar');
         
         if (myUsername && savedAvatarPath) {
-          console.log('🔄 Rooms - Loading my avatar for display');
           const base64 = await FileSystem.readAsStringAsync(savedAvatarPath, {
             encoding: FileSystem.EncodingType.Base64,
           });
           const avatarBase64 = `data:image/jpeg;base64,${base64}`;
           setLocalAvatarUrl(myUsername, avatarBase64);
-          console.log('⚡ Rooms - My avatar ready for display');
         }
       } catch (error) {
         console.error('❌ Error loading my avatar in rooms:', error);
@@ -127,7 +117,6 @@ export default function Rooms() {
       const username = await getUsername();
       
       if (isReconnect) {
-        console.log('🔄 Reconnecting to game in progress:', roomId);
         // Si es una reconexión, ir directamente al juego
         socket.emit('joinRoom', { roomId, player: { name, username } });
         socket.once('joined', ({ roomId: joinedRoomId }) => {
@@ -137,7 +126,6 @@ export default function Rooms() {
         });
       } else {
         // Flujo normal para salas que no han empezado
-        console.log('🚪 Joining waiting room:', roomId);
         socket.emit('joinRoom', { roomId, player: { name, username } });
         socket.once('joined', ({ roomId: joinedRoomId }) => {
           setJoiningRoomId(null);
@@ -168,18 +156,10 @@ export default function Rooms() {
     try {
       const name = await AsyncStorage.getItem('profile:name');
       const username = await getUsername();
-      
-      console.log('🔄 Creating room with player data:', {
-        name,
-        username,
-        note: 'Avatar will be loaded from DB by server'
-      });
-      
       // No enviar avatar - el servidor lo obtiene de la BD
       socket.emit('createRoom', { player: { name, username } });
       
       socket.once('joined', ({ roomId }) => {
-        console.log('✅ Room created and joined:', roomId);
         setIsCreatingRoom(false);
         router.push({ pathname: '/waiting', params: { roomId } });
       });

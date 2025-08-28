@@ -59,18 +59,6 @@ export default function Game() {
   const [currentMessage, setCurrentMessage] = useState(null); // deprecated, mantenido temporalmente
   const [toastMessages, setToastMessages] = useState([]);
   const [showSpeedSelect, setShowSpeedSelect] = useState(false);
-  
-  // Logging consolidado de todos los estados de modales
-  useEffect(() => {
-    console.log(`[BingoGame] Estados de modales:`, {
-      showGameSummary,
-      showExit,
-      showNumbers,
-      showSpeedSelect,
-      announce: !!announce,
-      timestamp: new Date().toISOString()
-    });
-  }, [showGameSummary, showExit, showNumbers, showSpeedSelect, announce]);
 
   const {
     startBackground,
@@ -103,7 +91,6 @@ export default function Game() {
           currentPlayerIds.some((id, index) => id !== previousPlayerIds[index]);
         
         if (playersChanged) {
-          console.log('🔄 Game - Players changed, syncing avatars:', s.players.length);
           syncPlayers(s.players);
           previousPlayersRef.current = s.players;
         }
@@ -117,17 +104,25 @@ export default function Game() {
         });
         setPlayersReady(readyObj);
       }
-      // Si comenzó una nueva partida, cerrar el resumen si estaba abierto
-      // Heurística: si lastBall no es null o si drawn se reseteó y hay roomId estable
-      if (showGameSummary && s?.roomId && (s.lastBall !== null || (Array.isArray(s.drawn) && s.drawn.length >= 0))) {
+      
+      // 🔧 MEJORADO: Si comenzó una nueva partida, cerrar el resumen automáticamente
+      if (showGameSummary && s?.started && !s?.gameEnded) {
         setShowGameSummary(false);
         setGameSummaryData(null);
+        handleHideModal('gameresumen');
       }
     });
     socket.on('ball', (n) => {
       // Efecto de inicio al recibir la primera bola de una nueva partida
       if (!hasGameStartedRef.current) {
         hasGameStartedRef.current = true;
+      }
+      
+      // 🔧 Si recibimos una bola y el GameSummaryModal está abierto, cerrarlo
+      if (showGameSummary) {
+        setShowGameSummary(false);
+        setGameSummaryData(null);
+        handleHideModal('gameresumen');
       }
       
       // Actualizar inmediatamente el estado con la nueva bolilla para que aparezca en el historial
@@ -175,7 +170,6 @@ export default function Game() {
       }
       // Sincronizar avatar del jugador del anuncio
       if (payload?.playerUsername && payload?.playerAvatarId) {
-        console.log('🔄 Game - Syncing announcement avatar:', payload.playerUsername, payload.playerAvatarId);
         syncAvatar(payload.playerUsername, payload.playerAvatarId);
       }
       
@@ -211,7 +205,6 @@ export default function Game() {
         console.warn('Reclamación rechazada:', message);
         // Aquí podrías mostrar una alerta o toast al usuario si lo deseas
       } else {
-        console.log('¡Reclamación exitosa!');
         // Si reclamé y no es full, disparar logro
         try {
           const figs = Array.isArray(result?.figures) ? result.figures : [];
@@ -264,7 +257,6 @@ export default function Game() {
   // Chat listener
   useEffect(() => {
     const onChatMessage = (messageData) => {
-      console.log('Game - Chat message received:', messageData);
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       const withId = { ...messageData, id };
       setToastMessages(prev => [...prev, withId].slice(-4));
@@ -333,8 +325,6 @@ export default function Game() {
 
   // Funciones helper para manejar modales de forma segura
   const handleShowModal = useCallback((modalName) => {
-    console.log(`[BingoGame] Mostrando modal: ${modalName}`);
-    
     switch (modalName) {
       case 'gameresumen':
         setShowGameSummary(true);
@@ -352,7 +342,6 @@ export default function Game() {
   }, []);
 
   const handleHideModal = useCallback((modalName) => {
-    console.log(`[BingoGame] Ocultando modal: ${modalName}`);
     
     switch (modalName) {
       case 'gameresumen':
@@ -402,13 +391,6 @@ export default function Game() {
             AsyncStorage.getItem('profile:name'),
             getUsername()
           ]);
-          
-          console.log('🔄 Game - Loading player data:', { savedName, savedUsername });
-          
-          // Aquí no podemos modificar el estado directamente, pero podemos loguear para debug
-          if (savedName && savedUsername) {
-            console.log('⚡ Game - Player data loaded:', { name: savedName, username: savedUsername });
-          }
         } catch (error) {
           console.error('❌ Error loading player data:', error);
         }
@@ -421,7 +403,6 @@ export default function Game() {
   // Sincronizar mi propio avatar cuando se carga mi jugador
   useEffect(() => {
     if (myPlayer && myPlayer.username && myPlayer.avatarId) {
-      console.log('🔄 Game - Syncing my own avatar:', myPlayer.username, myPlayer.avatarId);
       syncAvatar(myPlayer.username, myPlayer.avatarId);
     }
   }, [myPlayer?.username, myPlayer?.avatarId, syncAvatar]);
@@ -429,7 +410,6 @@ export default function Game() {
   // Establecer mi avatar local en el caché cuando esté disponible
   useEffect(() => {
     if (myAvatar && myUsername) {
-      console.log('⚡ Game - Setting my avatar from useMyAvatar hook:', myUsername);
       setLocalAvatarUrl(myUsername, myAvatar);
     }
   }, [myAvatar, myUsername, setLocalAvatarUrl]);
@@ -437,7 +417,6 @@ export default function Game() {
   // Recargar avatar cuando regresamos al juego (por si lo actualizamos en perfil)
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
-      console.log('🔄 Game - Screen focused, checking for avatar updates...');
       // Recargar avatar por si se actualizó desde perfil
       const recheckAvatar = async () => {
         try {
@@ -456,8 +435,6 @@ export default function Game() {
             
             // También establecer inmediatamente en el hook
             setLocalAvatarUrl(myUsername, avatarBase64);
-            
-            console.log('⚡ Game - Avatar updated after screen focus');
           }
         } catch (error) {
           console.error('❌ Error rechecking avatar:', error);
@@ -500,7 +477,6 @@ export default function Game() {
   }, []);
   const claimAutoAll = useCallback(() => {
     if (isClaiming) {
-      console.log('Ya hay una reclamación en proceso, ignorando...');
       return;
     }
     
@@ -516,7 +492,6 @@ export default function Game() {
       }
       
       const cards = myPlayer.cards;
-      console.log(`Evaluando ${cards.length} cartones para reclamar...`);
       
       // Helper: construir matriz marcada efectiva marcando automáticamente los números cantados y el centro libre
       const buildEffectiveMarked = (card, localMarked) => {
@@ -547,21 +522,15 @@ export default function Game() {
       for (let idx = 0; idx < cards.length; idx++) {
         const card = cards[idx];
         const effectiveMarked = buildEffectiveMarked(card, localMarks[idx]);
-        console.log(`Cartón ${idx}:`, {
-          hasMarks: effectiveMarked.some(row => row.some(cell => cell)),
-          markedCount: effectiveMarked.flat().filter(Boolean).length
-        });
         const figures = Bingo.checkFigures(effectiveMarked);
         const completedFigures = Object.entries(figures).filter(([key, value]) => value).map(([key]) => key);
         const availableFigures = completedFigures.filter(fig => !state.figuresClaimed?.[fig]);
-        console.log(`Cartón ${idx} - Figuras completadas:`, completedFigures, `| Disponibles:`, availableFigures);
         if (availableFigures.length > 0) {
           claimTargets.push({ idx, marked: effectiveMarked });
         }
       }
 
   if (claimTargets.length > 0) {
-        console.log(`Reclamando en ${claimTargets.length} cartón(es):`, claimTargets.map(t => t.idx));
         claimTargets.forEach(t => {
           socket.emit('claim', { roomId: rid, figure: null, cardIndex: t.idx, marked: t.marked });
         });
@@ -580,14 +549,6 @@ export default function Game() {
 
   const handleSendMessage = async (messageData) => {
     if (!myPlayer && !myUsername) return;
-
-    console.log('📤 Game - Sending message with my data:', {
-      hookUsername: myUsername,
-      hookName: myName,
-      serverPlayer: myPlayer?.username,
-      hasAvatar: !!myAvatar
-    });
-
     // Usar datos del hook useMyAvatar como primera opción
     let username = myUsername;
     let name = myName;
@@ -595,7 +556,6 @@ export default function Game() {
 
     // Si tenemos avatar del hook, asegurarnos de que esté en el caché
     if (username && myAvatar) {
-      console.log('📤 Game - Setting local avatar in cache before sending message');
       setLocalAvatarUrl(username, myAvatar);
     }
 
@@ -626,14 +586,8 @@ export default function Game() {
       },
       timestamp: Date.now()
     };
-
-    console.log('📤 Game - Sending chat message with final data:', fullMessage);
     socket.emit('sendChatMessage', { roomId: state.roomId || params.roomId, message: fullMessage });
     setChatVisible(false);
-  };
-
-  const handleMessageComplete = () => {
-    setCurrentMessage(null);
   };
 
   const handleToastComplete = (id) => {
@@ -961,6 +915,7 @@ export default function Game() {
           me={me}
           onClose={() => {
             handleHideModal('gameresumen');
+            // Ir directamente a gameSelect sin mostrar ExitModal (partida ya terminó)
             router.replace('/gameSelect');
           }}
           onPlayAgain={() => {

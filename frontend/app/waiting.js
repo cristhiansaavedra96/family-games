@@ -40,7 +40,6 @@ export default function Waiting() {
         setChangingCards(false); // Liberar bloqueo al recibir nuevo estado
         // Sincronizar avatares cuando cambien los jugadores
         if (s.players && s.players.length > 0) {
-          // console.log('🔄 Waiting - Syncing avatars for players:', s.players.map(p => p.username));
           syncPlayers(s.players);
         }
       }
@@ -52,8 +51,6 @@ export default function Waiting() {
     };
     const onJoined = ({ id }) => setMe(id);
     const onChatMessage = (messageData) => {
-      // Mostrar mensaje como toast apilado a la derecha
-      console.log('Chat message received:', messageData);
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       const withId = { ...messageData, id };
       setToastMessages(prev => [...prev, withId].slice(-4)); // máximo 4 visibles
@@ -113,8 +110,6 @@ const setCards = (n) => {
       },
       timestamp: Date.now()
     };
-
-    console.log('Sending chat message:', fullMessage);
     // Enviar mensaje al servidor
     socket.emit('sendChatMessage', { roomId, message: fullMessage });
     setChatVisible(false);

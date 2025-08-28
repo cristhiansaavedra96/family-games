@@ -10,21 +10,11 @@ const SpeedSelectModal = ({
 }) => {
   const speeds = [0.5, 0.75, 1, 1.25, 1.5];
 
-  // Logging para detectar conflictos
-  console.log(`[SpeedSelectModal] Render`, {
-    visible,
-    timestamp: new Date().toISOString()
-  });
-
   if (!visible) {
-    console.log(`[SpeedSelectModal] No visible, no renderizando contenido`);
     return null;
   }
 
-  console.log(`[SpeedSelectModal] Modal visible, renderizando contenido completo`);
-
   const handleSpeedSelect = (speed) => {
-    console.log(`[SpeedSelectModal] Velocidad seleccionada: ${speed}x (Absolute View)`);
     onSpeedChange && onSpeedChange(speed);
     onClose && onClose();
   };
@@ -97,7 +87,6 @@ const SpeedSelectModal = ({
         
         <TouchableOpacity 
           onPress={() => {
-            console.log(`[SpeedSelectModal] Botón Cancelar presionado (Absolute View)`);
             onClose && onClose();
           }}
           style={{ marginTop: 8 }}

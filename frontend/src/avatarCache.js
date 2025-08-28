@@ -22,7 +22,6 @@ class AvatarCache {
     // Primero verificar memoria
     const memoryKey = `${username}:${avatarId}`;
     if (this.memoryCache.has(memoryKey)) {
-  // console.log(`🎯 Avatar cache HIT (memory): ${username} -> ${avatarId}`);
       return this.memoryCache.get(memoryKey);
     }
 
@@ -32,16 +31,12 @@ class AvatarCache {
       const cachedAvatar = await AsyncStorage.getItem(cacheKey);
       
       if (cachedAvatar) {
-        console.log(`🎯 Avatar cache HIT (storage): ${username} -> ${avatarId}`);
-        // Guardar en memoria para próximas consultas
         this.memoryCache.set(memoryKey, cachedAvatar);
         return cachedAvatar;
       }
     } catch (error) {
       console.error('❌ Error reading avatar cache:', error);
     }
-
-    console.log(`🔍 Avatar cache MISS: ${username} -> ${avatarId}`);
     return null;
   }
 
@@ -61,8 +56,6 @@ class AvatarCache {
       
       // Actualizar índice de caché
       await this.updateCacheIndex(avatarId);
-      
-      console.log(`💾 Avatar cached: ${username} -> ${avatarId} (${(avatarUrl.length/1024).toFixed(1)}KB)`);
     } catch (error) {
       console.error('❌ Error saving avatar cache:', error);
     }
@@ -74,8 +67,6 @@ class AvatarCache {
     
     const cached = await this.getAvatar(username, newAvatarId);
     const needsUpdate = !cached;
-    
-    console.log(`🔄 Avatar update check: ${username} -> ${newAvatarId} -> ${needsUpdate ? 'NEEDS UPDATE' : 'UP TO DATE'}`);
     return needsUpdate;
   }
 
@@ -118,8 +109,6 @@ class AvatarCache {
 
       // Actualizar índice
       await AsyncStorage.setItem(AVATAR_INDEX_KEY, JSON.stringify(toKeep));
-      
-      console.log(`🧹 Cleaned ${toDelete.length} old avatars from cache`);
     } catch (error) {
       console.error('❌ Error cleaning cache:', error);
     }

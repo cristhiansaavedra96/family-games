@@ -9,19 +9,9 @@ const AnnouncementModal = ({
   getAvatarUrl,
   onClose 
 }) => {
-  // Logging para detectar conflictos
-  console.log(`[AnnouncementModal] Render`, {
-    visible,
-    hasAnnounce: !!announce,
-    timestamp: new Date().toISOString()
-  });
-
   if (!announce || !visible) {
-    console.log(`[AnnouncementModal] No visible o no announce, no renderizando contenido`);
     return null;
   }
-
-  console.log(`[AnnouncementModal] Modal visible, renderizando contenido completo`);
 
   // Obtener icono según la figura
   const getFigureIcon = (figure) => {
@@ -177,7 +167,6 @@ const AnnouncementModal = ({
         {/* Botón para continuar */}
         <TouchableOpacity 
           onPress={() => {
-            console.log(`[AnnouncementModal] Botón Continuar presionado (Absolute View)`);
             onClose && onClose();
           }}
           style={{
