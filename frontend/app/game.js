@@ -7,20 +7,24 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar';
 import socket from '../src/socket';
 import { Bingo } from '../src/games';
+import { getBingoColorByIndexOrNumber } from '../src/games/bingo/components/BingoCard';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { ChatPanel, ChatButton, ChatToasts } from '../src/components';
 import { useAvatarSync } from '../src/hooks/useAvatarSync';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
 import { getUsername } from '../src/utils';
-import avatarCache from '../src/avatarCache';
+import { saveAvatarToCache } from '../src/services/avatarCache';
 import { useMyAvatar } from '../src/hooks/useMyAvatar';
+import { useBingoSound } from '../src/sound/useBingoSound';
 
 export default function Game() {
   const insets = useSafeAreaInsets();
   const { syncPlayers, getAvatarUrl, syncAvatar, setLocalAvatarUrl } = useAvatarSync();
   const { myAvatar, myUsername, myName } = useMyAvatar(); // Hook para mi avatar local
   const [state, setState] = useState({ roomId: null, players: [], drawn: [], lastBall: null, hostId: null, figuresClaimed: {}, specificClaims: {}, speed: 1 });
+  // Estado local para mostrar el número animado
+  const [animBall, setAnimBall] = useState(null);
   const [localMarks, setLocalMarks] = useState({}); // cardIndex -> 5x5 bool
   const [me, setMe] = useState(null);
   const [myAvatarLoaded, setMyAvatarLoaded] = useState(false); // Para controlar si ya cargamos el avatar
@@ -42,6 +46,15 @@ export default function Game() {
   const [chatVisible, setChatVisible] = useState(false);
   const [currentMessage, setCurrentMessage] = useState(null); // deprecated, mantenido temporalmente
   const [toastMessages, setToastMessages] = useState([]);
+  const {
+    startBackground,
+    stopBackground,
+    musicMuted,
+    setMusicMuted,
+    effectsMuted,
+    setEffectsMuted,
+    playEffect,
+  } = useBingoSound();
 
   // Hook de animaciones del bingo
   const { 
@@ -52,6 +65,8 @@ export default function Game() {
   } = Bingo.useBingoAnimations();
   
   const prevLastBall = useRef(null);
+  const hasGameStartedRef = useRef(false);
+  const playEffectSafe = playEffect;
 
   // Ref para mantener la lista anterior de jugadores y evitar sincronizaciones innecesarias
   const previousPlayersRef = useRef([]);
@@ -92,16 +107,50 @@ export default function Game() {
       }
     });
     socket.on('ball', (n) => {
-      // Animación cuando sale nueva bola
-      animateNewBall();
-      Bingo.speakBingoNumber(n);
+      // Efecto de inicio al recibir la primera bola de una nueva partida
+      if (!hasGameStartedRef.current) {
+        hasGameStartedRef.current = true;
+      }
+      // Mostrar el número nuevo durante la animación
+      setAnimBall(n);
+      animateNewBall(showNumbers);
+      if (!effectsMuted) {
+        Bingo.speakNumberBingo(n);
+      }
+      // Cuando termina la animación, mantener el número hasta que el estado global cambie
+      // y evitar parpadeo con el anterior
+      setTimeout(() => {
+        setAnimBall((current) => {
+          // Si el estado global ya tiene el nuevo número, limpiar
+          if (state.lastBall === n) return null;
+          // Si no, mantener el número animado hasta que el estado global cambie
+          return n;
+        });
+      }, 600);
     });
   socket.on('gameOver', (payload) => {
       // En lugar de ir a summary, mostrar modal de resumen
       setGameSummaryData(payload);
       setShowGameSummary(true);
+      // Si yo gané full, reproducir win
+      try {
+        const myId = me;
+        const fullWinner = payload?.figuresClaimed?.full;
+        if (fullWinner && fullWinner === myId) {
+          playEffectSafe('win');
+        }
+      } catch {}
     });
     socket.on('announcement', (payload) => {
+      // Sonidos por anuncio
+      if (Array.isArray(payload?.figures) && payload.figures.length > 0) {
+        if (payload.figures.includes('full')) {
+          // Win suena para todos cuando hay cartón lleno
+          playEffectSafe('win');
+        } else if (payload.playerId === me) {
+          playEffectSafe('logro');
+        }
+      }
       // Sincronizar avatar del jugador del anuncio
       if (payload?.playerUsername && payload?.playerAvatarId) {
         console.log('🔄 Game - Syncing announcement avatar:', payload.playerUsername, payload.playerAvatarId);
@@ -141,6 +190,15 @@ export default function Game() {
         // Aquí podrías mostrar una alerta o toast al usuario si lo deseas
       } else {
         console.log('¡Reclamación exitosa!');
+        // Si reclamé y no es full, disparar logro
+        try {
+          const figs = Array.isArray(result?.figures) ? result.figures : [];
+          if (figs.includes('full')) {
+            playEffectSafe('win');
+          } else if (figs.length > 0) {
+            playEffectSafe('logro');
+          }
+        } catch {}
       }
     });
   // Si ya está conectado, usa socket.id actual
@@ -152,6 +210,24 @@ export default function Game() {
   socket.off('state'); socket.off('ball'); socket.off('gameOver'); socket.off('joined'); socket.off('announcement');
     };
   }, []);
+
+  // Música de fondo: iniciar al entrar, detener al salir
+  useEffect(() => {
+    if (!musicMuted) startBackground();
+    return () => { stopBackground(); };
+  }, []);
+
+  // Responder a cambios de mute de música
+  useEffect(() => {
+    if (musicMuted) stopBackground(); else startBackground();
+  }, [musicMuted, startBackground, stopBackground]);
+
+  // Resetear flag de inicio cuando se detecta una nueva partida (sin bolillas)
+  useEffect(() => {
+    if (Array.isArray(state.drawn) && state.drawn.length === 0 && state.lastBall === null) {
+      hasGameStartedRef.current = false;
+    }
+  }, [state.drawn?.length, state.lastBall]);
 
   // Chat listener
   useEffect(() => {
@@ -187,10 +263,21 @@ export default function Game() {
   useEffect(() => {
     if (state.lastBall !== null && prevLastBall.current !== state.lastBall) {
       // La animación ahora es completamente independiente
-      animateNewBall(showNumbers);
-      prevLastBall.current = state.lastBall;
+      //animateNewBall(showNumbers);
+      //prevLastBall.current = state.lastBall;
     }
   }, [state.lastBall, showNumbers]); // Removí animateNewBall de las dependencias
+
+  // Detectar inicio de nueva partida (estado limpio) para reproducir start si aún no inició
+  useEffect(() => {
+    if (!hasGameStartedRef.current && Array.isArray(state.drawn) && state.drawn.length === 0 && state.lastBall === null && state.roomId) {
+      // No reproducimos inmediatamente para evitar arrancar en pantallas intermedias; se dispara al primer 'ball'.
+      // Pero podríamos prearmar algo si fuera necesario.
+    }
+  }, [state.drawn?.length, state.lastBall, state.roomId]);
+
+  // Persistir mute de efectos en SoundManager cuando cambie
+  // effectsMuted manejado dentro del hook
 
   // Confirmación al salir
   useEffect(() => {
@@ -300,7 +387,7 @@ export default function Game() {
             
             // Actualizar caché con el avatar más reciente
             const tempAvatarId = `local_${myUsername}_${Date.now()}`;
-            await avatarCache.setAvatar(myUsername, tempAvatarId, avatarBase64);
+            await saveAvatarToCache(tempAvatarId, avatarBase64);
             
             // También establecer inmediatamente en el hook
             setLocalAvatarUrl(myUsername, avatarBase64);
@@ -333,8 +420,15 @@ export default function Game() {
     // Programar tras las animaciones/interacciones actuales
     InteractionManager.runAfterInteractions(() => {
       setLocalMarks(prev => {
+        const prevVal = Boolean(prev?.[cardIndex]?.[r]?.[c]);
         const grid = prev[cardIndex] ? prev[cardIndex].map(row => row.slice()) : Array.from({ length: 5 }, () => Array(5).fill(false));
-        if (!(r === 2 && c === 2)) grid[r][c] = !grid[r][c];
+        if (!(r === 2 && c === 2)) {
+          // Sonido al seleccionar una ficha (solo cuando se marca)
+          if (!prevVal) {
+            playEffectSafe('select');
+          }
+          grid[r][c] = !grid[r][c];
+        }
         return { ...prev, [cardIndex]: grid };
       });
     });
@@ -360,16 +454,21 @@ export default function Game() {
       console.log(`Evaluando ${cards.length} cartones para reclamar...`);
       
       // Helper: construir matriz marcada efectiva marcando automáticamente los números cantados y el centro libre
-  const buildEffectiveMarked = (card, localMarked) => {
+      const buildEffectiveMarked = (card, localMarked) => {
+        // Sincronizar: usar drawn + animBall si animBall no está incluido
+        let drawnSync = state.drawn || [];
+        if (animBall && !drawnSync.includes(animBall)) {
+          drawnSync = [...drawnSync, animBall];
+        }
         const m = Array.from({ length: 5 }, (_, r) => Array.from({ length: 5 }, (_, c) => false));
         for (let r = 0; r < 5; r++) {
           for (let c = 0; c < 5; c++) {
             if (r === 2 && c === 2) { m[r][c] = true; continue; }
-    const wasToggled = Boolean(localMarked?.[r]?.[c]);
+            const wasToggled = Boolean(localMarked?.[r]?.[c]);
             const value = card?.[r]?.[c];
-            const isDrawn = state.drawn?.includes?.(value);
-    // Considerar marcada solo si el usuario la marcó Y el número fue cantado (o es centro libre)
-    m[r][c] = Boolean(wasToggled && isDrawn);
+            const isDrawn = drawnSync.includes(value);
+            // Considerar marcada solo si el usuario la marcó Y el número fue cantado (o es centro libre)
+            m[r][c] = Boolean(wasToggled && isDrawn);
           }
         }
         return m;
@@ -478,40 +577,59 @@ export default function Game() {
 
   const Header = () => (
     <View style={{ paddingHorizontal: 0 }} onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}>
-      <View style={{ backgroundColor: '#2c3e50', borderBottomLeftRadius: 28, borderBottomRightRadius: 28, paddingTop: insets.top + 8, paddingBottom: 16, paddingHorizontal: 0, minHeight: 160 }}>
-        {/* fila superior: Home y Velocidad juntos a la izquierda, con padding lateral */}
+      <View style={{ backgroundColor: '#2c3e50', borderBottomLeftRadius: 28, borderBottomRightRadius: 28, paddingTop: insets.top + 4, paddingBottom: 6, paddingHorizontal: 0, minHeight: 100 }}>
+        {/* fila superior: Home y Velocidad en la primera fila, con padding lateral */}
         <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingHorizontal: 16 }}>
-          <TouchableOpacity onPress={() => setShowExit(true)} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor:'#fff', alignItems:'center', justifyContent:'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
-            <Ionicons name="home" size={24} color="#2c3e50" />
-          </TouchableOpacity>
-          <View style={{ flexDirection:'row', alignItems:'center' }}>
-          {state.hostId === me ? (
-            <TouchableOpacity onPress={() => {
-              const list = [0.5, 1, 1.5, 2];
-              const idx = Math.max(0, list.indexOf(state.speed));
-              const next = list[(idx + 1) % list.length];
-              socket.emit('setSpeed', { roomId: state.roomId || params.roomId, speed: next });
-            }} style={{ height: 40, borderRadius: 20, backgroundColor: '#fff', alignItems:'center', justifyContent:'center', paddingHorizontal: 16, flexDirection:'row', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
-              <MaterialCommunityIcons name="fast-forward" size={18} color="#2c3e50" />
-              <Text style={{ marginLeft: 8, fontWeight:'700', color:'#2c3e50', fontSize: 14, fontFamily: 'Montserrat_700Bold' }}>{(state.speed||1)}x</Text>
+          {/* Grupo izquierdo: Home + Velocidad */}
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {/* Home */}
+            <TouchableOpacity onPress={() => setShowExit(true)} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor:'#fff', alignItems:'center', justifyContent:'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
+              <Ionicons name="home" size={24} color="#2c3e50" />
             </TouchableOpacity>
-          ) : (
-            <View style={{ height: 40, borderRadius: 20, backgroundColor: '#fff', alignItems:'center', justifyContent:'center', paddingHorizontal: 16, flexDirection:'row', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
-              <Text style={{ fontWeight:'700', color:'#2c3e50', fontSize: 14, fontFamily: 'Montserrat_700Bold' }}>{(state.speed||1)}x</Text>
-            </View>
-          )}
-          <View style={{ width: 12 }} />
-          <TouchableOpacity onPress={() => router.push({ pathname: '/leaderboard', params: { gameKey: 'bingo' } })} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor:'#fff', alignItems:'center', justifyContent:'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
-            <MaterialCommunityIcons name="podium" size={22} color="#2c3e50" />
-          </TouchableOpacity>
+            {/* Velocidad (host editable, otros lectura) */}
+            {state.hostId === me ? (
+              <TouchableOpacity onPress={() => {
+                const list = [0.5, 1, 1.5, 2];
+                const idx = Math.max(0, list.indexOf(state.speed));
+                const next = list[(idx + 1) % list.length];
+                socket.emit('setSpeed', { roomId: state.roomId || params.roomId, speed: next });
+              }} style={{ marginLeft: 8, height: 40, borderRadius: 20, backgroundColor: '#fff', alignItems:'center', justifyContent:'center', paddingHorizontal: 16, flexDirection:'row', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
+                <MaterialCommunityIcons name="fast-forward" size={18} color="#2c3e50" />
+                <Text style={{ marginLeft: 8, fontWeight:'700', color:'#2c3e50', fontSize: 14, fontFamily: 'Montserrat_700Bold' }}>{(state.speed||1)}x</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={{ marginLeft: 8, height: 40, borderRadius: 20, backgroundColor: '#fff', alignItems:'center', justifyContent:'center', paddingHorizontal: 16, flexDirection:'row', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
+                <Text style={{ fontWeight:'700', color:'#2c3e50', fontSize: 14, fontFamily: 'Montserrat_700Bold' }}>{(state.speed||1)}x</Text>
+              </View>
+            )}
           </View>
+          {/* Placeholder para mantener altura/espacio a la derecha */}
+          <View style={{ width: 44, height: 44 }} />
+        </View>
+
+        {/* Segunda fila absoluta: Música y Efectos lado a lado, no empuja el bolillero */}
+        <View style={{ position: 'absolute', left: 16, top: (insets.top || 0) + 4 + 44 + 8, zIndex: 2, flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity
+            onPress={() => setMusicMuted((m) => !m)}
+            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3, marginRight: 8 }}
+            accessibilityLabel="Silenciar música"
+          >
+            <Ionicons name={musicMuted ? 'musical-notes-outline' : 'musical-notes'} size={20} color={musicMuted ? '#95a5a6' : '#2c3e50'} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setEffectsMuted(prev => !prev)}
+            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}
+            accessibilityLabel="Silenciar efectos"
+          >
+            <Ionicons name={effectsMuted ? 'volume-mute' : 'volume-high'} size={20} color={effectsMuted ? '#95a5a6' : '#2c3e50'} />
+          </TouchableOpacity>
         </View>
 
         {/* bola central animada */}
         <Bingo.AnimatedBingoBall 
           ballAnimatedStyle={ballAnimatedStyle}
-          lastBall={state.lastBall}
-          style={{ marginTop: 8 }}
+          lastBall={animBall !== null ? animBall : undefined}
+          style={{ marginTop: 0, marginBottom: 2 }}
         />
 
         {/* últimas bolillas animadas + botón Lista a la derecha */}
@@ -524,7 +642,7 @@ export default function Game() {
             historyAnimatedStyle
           ]}>
             {state.drawn.slice(-4).reverse().map((n, i) => (
-              <View key={`${n}-${i}`} style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#27ae60', alignItems: 'center', justifyContent: 'center', marginRight: 8, borderWidth: 2, borderColor: '#fff' }}>
+              <View key={`${n}-${i}`} style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: getBingoColorByIndexOrNumber(n), alignItems: 'center', justifyContent: 'center', marginRight: 8, borderWidth: 2, borderColor: '#fff' }}>
                 <Text style={{ color: '#fff', fontSize: 20, fontFamily: 'Mukta_700Bold', lineHeight: 16, includeFontPadding: false, textAlignVertical: 'center' }}>{n}</Text>
               </View>
             ))}
@@ -544,7 +662,7 @@ export default function Game() {
       <View style={{ flex: 1, backgroundColor: '#2c3e50' }}>
         <Header />
         {/* zona de cartones con altura dinámica */}
-        <View style={{ flex: 1, paddingHorizontal: 0, paddingTop: 16, backgroundColor: '#f5f7fa' }} onLayout={(e)=>{ setAreaW(e.nativeEvent.layout.width); setAreaH(e.nativeEvent.layout.height); }}>
+  <View style={{ flex: 1, paddingHorizontal: 0, paddingTop: 4, backgroundColor: '#f5f7fa' }} onLayout={(e)=>{ setAreaW(e.nativeEvent.layout.width); setAreaH(e.nativeEvent.layout.height); }}>
       {(() => {
         const count = myPlayer?.cards?.length || 0;
         // Calculamos la altura disponible real para los cartones
@@ -905,29 +1023,30 @@ export default function Game() {
         })}
       </View>
       {/* Modal salir mejorado */}
-      <Modal transparent visible={showExit} animationType="fade">
-        <View style={{ flex:1, backgroundColor:'rgba(0,0,0,0.6)', justifyContent:'center', alignItems:'center', padding:24 }}>
-          <View style={{ backgroundColor:'#fff', borderRadius:20, padding:24, width:'85%', maxWidth: 320, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 10 }}>
-            <Text style={{ fontSize:20, fontWeight:'700', marginBottom:12, color: '#2c3e50', textAlign: 'center', fontFamily: 'Montserrat_700Bold' }}>¿Salir de la partida?</Text>
-            <Text style={{ fontSize:14, color:'#7f8c8d', textAlign:'center', marginBottom:20, fontFamily: 'Montserrat_400Regular' }}>Perderás tu progreso actual en el juego</Text>
-            <View style={{ flexDirection:'row', justifyContent:'space-between' }}>
-              <TouchableOpacity 
-                onPress={() => setShowExit(false)} 
-                style={{ flex: 1, padding:12, marginRight: 8, backgroundColor: '#ecf0f1', borderRadius: 12, alignItems: 'center' }}
-              >
-                <Text style={{ fontWeight: '600', color: '#7f8c8d', fontFamily: 'Montserrat_600SemiBold' }}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                onPress={() => { allowExitRef.current = true; socket.emit('leaveRoom'); setShowExit(false); router.replace('/games'); }} 
-                style={{ flex: 1, padding:12, marginLeft: 8, backgroundColor: '#e74c3c', borderRadius: 12, alignItems: 'center' }}
-              >
-                <Text style={{ color:'#fff', fontWeight:'700', fontFamily: 'Montserrat_700Bold' }}>Salir</Text>
-              </TouchableOpacity>
+      {!showGameSummary &&
+        <Modal transparent visible={showExit} animationType="fade">
+          <View style={{ flex:1, backgroundColor:'rgba(0,0,0,0.6)', justifyContent:'center', alignItems:'center', padding:24 }}>
+            <View style={{ backgroundColor:'#fff', borderRadius:20, padding:24, width:'85%', maxWidth: 320, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 10 }}>
+              <Text style={{ fontSize:20, fontWeight:'700', marginBottom:12, color: '#2c3e50', textAlign: 'center', fontFamily: 'Montserrat_700Bold' }}>¿Salir de la partida?</Text>
+              <Text style={{ fontSize:14, color:'#7f8c8d', textAlign:'center', marginBottom:20, fontFamily: 'Montserrat_400Regular' }}>Perderás tu progreso actual en el juego</Text>
+              <View style={{ flexDirection:'row', justifyContent:'space-between' }}>
+                <TouchableOpacity 
+                  onPress={() => setShowExit(false)} 
+                  style={{ flex: 1, padding:12, marginRight: 8, backgroundColor: '#ecf0f1', borderRadius: 12, alignItems: 'center' }}
+                >
+                  <Text style={{ fontWeight: '600', color: '#7f8c8d', fontFamily: 'Montserrat_600SemiBold' }}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  onPress={() => { allowExitRef.current = true; socket.emit('leaveRoom'); setShowExit(false); router.replace('/games'); }} 
+                  style={{ flex: 1, padding:12, marginLeft: 8, backgroundColor: '#e74c3c', borderRadius: 12, alignItems: 'center' }}
+                >
+                  <Text style={{ color:'#fff', fontWeight:'700', fontFamily: 'Montserrat_700Bold' }}>Salir</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
-
+        </Modal>
+      }
       {/* Modal listado de números mejorado con bolillas */}
       <Modal transparent visible={showNumbers} animationType="slide">
         <View style={{ flex:1, backgroundColor:'rgba(0,0,0,0.5)' }}>

@@ -1,6 +1,3 @@
-// Utilidades generales del frontend
-export { speakNumberEs } from './voice';
-
 // Username como "login" sin contraseña - se pide una sola vez
 import AsyncStorage from '@react-native-async-storage/async-storage';
 

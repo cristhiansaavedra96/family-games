@@ -59,17 +59,17 @@ function createRoom() {
   const room = {
     id,
     name: `Sala ${roomNumber}`,
-  gameKey: 'bingo', // preparado para múltiples juegos
+    gameKey: 'bingo', // preparado para múltiples juegos
     started: false,
     paused: true,
-  speed: 1, // multiplicador x0.5..x2
-    cardsPerPlayer: 1,
+    speed: 1, // multiplicador x0.5..x2
+    cardsPerPlayer: 1, // Siempre inicializar en 1
     players: new Map(), // socketId -> { name, avatarUrl, avatarId, username, cards: number[][] }
     hostId: null,
     bag: [],
     drawn: [],
     timer: null,
-  announceTimeout: null,
+    announceTimeout: null,
     figuresClaimed: { 
       // Cambio a estructura más detallada: figura -> { playerId, cardIndex, details }
       corners: null, 
@@ -105,6 +105,7 @@ function getRoomsList() {
     })),
     started: r.started,
     hostId: r.hostId,
+    cardsPerPlayer: r.cardsPerPlayer || 1,
   }));
 }
 
@@ -145,7 +146,7 @@ function broadcastRoomState(roomId) {
 function stopTimer(room) { if (room.timer) { clearInterval(room.timer); room.timer = null; } }
 function startTimerIfNeeded(room) {
   if (!room.started || room.paused || room.timer) return;
-  const baseMs = 6000;
+  const baseMs = 10000;
   const factor = Number(room.speed) || 1;
   const intervalMs = Math.max(500, Math.round(baseMs / factor));
   room.timer = setInterval(() => drawNextBall(room), intervalMs);
@@ -590,7 +591,17 @@ io.on('connection', (socket) => {
     if (!room) return;
     let { name, avatarUrl, username } = player || {};
     let avatarId = null;
-    
+
+    // Eliminar cualquier jugador anterior con el mismo username
+    if (username) {
+      for (const [sockId, p] of room.players.entries()) {
+        if (p.username && p.username === username) {
+          room.players.delete(sockId);
+          room.playersReady && room.playersReady.delete(sockId);
+        }
+      }
+    }
+
     // 🖼️ Sincronizar avatar desde la base de datos si existe
     try {
       if (username) {
@@ -607,7 +618,7 @@ io.on('connection', (socket) => {
     } catch (e) {
       console.warn('Error ensuring player in joinRoom:', e);
     }
-    
+
     room.players.set(socket.id, { name, avatarUrl, avatarId, username, cards: [], joinedAt: Date.now() });
     if (!room.hostId) room.hostId = socket.id;
     socket.join(room.id);
@@ -833,9 +844,12 @@ io.on('connection', (socket) => {
   });
 
   // Nuevos endpoints para rankings y búsqueda
-  socket.on('getTopPlayers', async ({ gameKey, criteria, limit }, cb) => {
+  socket.on('getTopPlayers', async (params, cb) => {
+    console.log('[getTopPlayers] Solicitud recibida:', params);
     try {
+      const { gameKey, criteria, limit } = params || {};
       const topPlayers = await statsService.getTopPlayers(gameKey || 'bingo', criteria || 'points', limit || 10);
+      console.log('[getTopPlayers] Respuesta enviada:', topPlayers);
       if (typeof cb === 'function') cb({ ok: true, topPlayers });
     } catch (e) {
       console.error('Error getting top players:', e);

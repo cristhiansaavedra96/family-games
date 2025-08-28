@@ -4,6 +4,7 @@ export { AnimatedBingoBall } from './components/AnimatedBingoBall';
 
 // Hooks del Bingo
 export { useBingoAnimations } from './hooks/useBingoAnimations';
+export { speakNumberBingo } from './utils/voice';
 
 // Utilidades del Bingo
 export { 
@@ -14,4 +15,3 @@ export {
   getCardSize,
   checkFigures
 } from './utils/layout';
-export { speakBingoNumber } from './utils/voice';

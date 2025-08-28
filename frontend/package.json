@@ -15,6 +15,7 @@
     "@expo/metro-config": "^0.20.17",
     "@react-native-async-storage/async-storage": "2.1.2",
     "expo": "^53.0.0",
+    "expo-audio": "^0.4.8",
     "expo-constants": "~17.1.7",
     "expo-file-system": "^18.1.11",
     "expo-font": "~13.3.2",

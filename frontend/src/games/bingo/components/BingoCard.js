@@ -1,5 +1,21 @@
+// Utilidad para color de columna y bola según número
+export function getBingoColorByIndexOrNumber(idxOrNum) {
+  // Si es índice de columna (0-4)
+  if (typeof idxOrNum === 'number' && idxOrNum >= 0 && idxOrNum <= 4) {
+    return ['#e74c3c','#f1c40f','#27ae60','#9b59b6','#259cebff'][idxOrNum];
+  }
+  // Si es número de bola
+  if (typeof idxOrNum === 'number') {
+    if (idxOrNum >= 1 && idxOrNum <= 15) return '#e74c3c'; // rojo
+    if (idxOrNum >= 16 && idxOrNum <= 30) return '#f1c40f'; // amarillo
+    if (idxOrNum >= 31 && idxOrNum <= 45) return '#27ae60'; // verde
+    if (idxOrNum >= 46 && idxOrNum <= 60) return '#9b59b6'; // purpura
+    if (idxOrNum >= 61 && idxOrNum <= 75) return '#259cebff'; // celeste oscuro
+  }
+  return '#bdc3c7';
+}
 import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, Image } from 'react-native';
 function BingoCardBase({ card, drawn, marked, onToggle, compact, cellAspect, size = 'normal', completedFigures = [], cardIndex = 0, specificFigures = [] }) {
   const gridBorder = '#d1d8e0';
   
@@ -76,7 +92,10 @@ function BingoCardBase({ card, drawn, marked, onToggle, compact, cellAspect, siz
       paddingBottom: sizes.containerPadding, 
       paddingHorizontal: sizes.containerPadding, 
       backgroundColor: '#ffffff', 
-      borderRadius: sizes.borderRadius, 
+      borderTopLeftRadius: sizes.borderRadius, 
+      borderTopRightRadius: sizes.borderRadius, 
+      borderBottomLeftRadius: sizes.borderRadius, 
+      borderBottomRightRadius: sizes.borderRadius, 
       shadowColor: '#000', 
       shadowOpacity: 0.08, 
       shadowRadius: 12,
@@ -84,16 +103,32 @@ function BingoCardBase({ card, drawn, marked, onToggle, compact, cellAspect, siz
       elevation: 6
     }}>
       {/* Header B I N G O */}
-      <View style={{ flexDirection: 'row', marginBottom: sizes.headerSpacing, paddingHorizontal: 8 }}>
+      <View style={{ flexDirection: 'row', marginBottom: sizes.headerSpacing }}>
         {['B','I','N','G','O'].map((h, i) => (
-          <View key={i} style={{ flex: 1, alignItems: 'center' }}>
-            <Text style={{ 
-              fontWeight: '700', 
-              fontSize: sizes.headerFontSize, 
-              letterSpacing: 2, 
-              color: ['#e74c3c','#f39c12','#27ae60','#3498db','#9b59b6'][i],
-              fontFamily: 'Montserrat_700Bold'
-            }}>
+          <View
+            key={i}
+            style={{
+              flex: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: getBingoColorByIndexOrNumber(i),
+              borderTopLeftRadius: i === 0 ? sizes.borderRadius : 0,
+              borderTopRightRadius: i === 4 ? sizes.borderRadius : 0,
+              minHeight: sizes.cellFontSize * 1.2,
+              // Eliminar margen inferior para que no haya separación
+              marginBottom: 0
+            }}
+          >
+            <Text
+              style={{
+                fontWeight: '700',
+                fontSize: sizes.headerFontSize,
+                letterSpacing: 2,
+                color: '#fff',
+                fontFamily: 'Montserrat_700Bold',
+                textAlign: 'center',
+              }}
+            >
               {h}
             </Text>
           </View>
@@ -173,17 +208,23 @@ function BingoCardBase({ card, drawn, marked, onToggle, compact, cellAspect, siz
                   )}
                   
                   {/* Número */}
-                  <Text style={{ 
-                    fontSize: sizes.cellFontSize,
-                    letterSpacing: -0.5,
-                    color: isCenter ? '#f39c12' : textColor,
-                    zIndex: 1,
-                    fontFamily: isCenter ? 'Montserrat_400Regular' : 'Mukta_700Bold',
-                    // Subir levemente el número para mejor centrado visual
-                    transform: isCenter ? undefined : [{ translateY: -2 }]
-                  }}>
-                    {isCenter ? '★' : n}
-                  </Text>
+                  {isCenter ? (
+                    <Image
+                      source={require('../../../images/star.png')}
+                      style={{ width: sizes.cellFontSize * 1.1, height: sizes.cellFontSize * 1.1, resizeMode: 'contain' }}
+                    />
+                  ) : (
+                    <Text style={{
+                      fontSize: sizes.cellFontSize,
+                      letterSpacing: -0.5,
+                      color: textColor,
+                      zIndex: 1,
+                      fontFamily: 'Mukta_700Bold',
+                      transform: [{ translateY: -2 }]
+                    }}>
+                      {n}
+                    </Text>
+                  )}
                 </TouchableOpacity>
               );
             })}

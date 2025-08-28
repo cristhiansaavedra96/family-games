@@ -5,7 +5,10 @@ import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const CACHE_DIR = FileSystem.documentDirectory + 'avatars/';
-const CACHE_INDEX_KEY = 'avatar_cache_index';
+// Usar una clave distinta a la del caché legado para evitar conflictos de formato
+const CACHE_INDEX_KEY = 'fs_avatar_cache_index';
+const LEGACY_PREFIX = 'avatar_cache:'; // usado por la implementación antigua en AsyncStorage
+const LEGACY_INDEX_KEY = 'avatar_cache_index';
 
 // Asegurar que existe el directorio de caché
 async function ensureCacheDir() {
@@ -93,6 +96,31 @@ export async function saveAvatarToCache(avatarId, base64Data) {
     return false;
   }
 }
+// Imprimir estado del caché de avatares (IDs, fechas, tamaños)
+export async function logAvatarCacheStatus() {
+  try {
+    await ensureCacheDir();
+    const index = await getCacheIndex();
+    const files = await FileSystem.readDirectoryAsync(CACHE_DIR);
+    console.log('--- Avatar Cache Status ---');
+    console.log('Total en índice:', Object.keys(index).length);
+    for (const avatarId of Object.keys(index)) {
+      const filePath = CACHE_DIR + avatarId + '.jpg';
+      const fileInfo = await FileSystem.getInfoAsync(filePath);
+      const sizeKB = fileInfo.exists ? (fileInfo.size / 1024).toFixed(1) : 'N/A';
+      const fecha = new Date(index[avatarId]).toLocaleString();
+      console.log(`ID: ${avatarId} | Fecha: ${fecha} | Tamaño: ${sizeKB} KB | Existe: ${fileInfo.exists}`);
+    }
+    console.log('Archivos en directorio:', files.length);
+    for (const file of files) {
+      const fileInfo = await FileSystem.getInfoAsync(CACHE_DIR + file);
+      console.log(`Archivo: ${file} | Tamaño: ${(fileInfo.size / 1024).toFixed(1)} KB`);
+    }
+    console.log('--------------------------');
+  } catch (e) {
+    console.warn('Error al inspeccionar el caché de avatares:', e);
+  }
+}
 
 // Limpiar caché antiguo (opcional, para no llenar el storage)
 export async function cleanOldCache(maxAge = 7 * 24 * 60 * 60 * 1000) { // 7 días
@@ -136,4 +164,18 @@ export async function getAvatarWithCache(avatarId, fallbackUrl) {
   }
   
   return fallbackUrl;
+}
+
+// PURGA: elimina el caché legado basado en AsyncStorage (evita SQLITE_FULL)
+export async function purgeLegacyAvatarCache() {
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const toRemove = keys.filter(k => k.startsWith(LEGACY_PREFIX) || k === LEGACY_INDEX_KEY);
+    if (toRemove.length > 0) {
+      await AsyncStorage.multiRemove(toRemove);
+      console.log(`🧹 Purged legacy avatar cache keys: ${toRemove.length}`);
+    }
+  } catch (e) {
+    console.warn('Failed purging legacy avatar cache:', e);
+  }
 }

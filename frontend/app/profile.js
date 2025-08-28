@@ -601,45 +601,7 @@ export default function Profile() {
 
         {/* Sección de Actualizaciones */}
         <View style={{ marginTop: 0, paddingHorizontal: 20 }}>
-
-          {/* Botón Verificar Actualizaciones */}
-          <TouchableOpacity
-            onPress={checkForUpdates}
-            disabled={isCheckingUpdates}
-            style={{
-              backgroundColor: isCheckingUpdates ? '#bdc3c7' : '#3498db',
-              borderRadius: 12,
-              paddingVertical: 20,
-              alignItems: 'center',
-              shadowColor: '#000',
-              shadowOpacity: 0.1,
-              shadowRadius: 8,
-              shadowOffset: { width: 0, height: 2 },
-              elevation: 4,
-              opacity: isCheckingUpdates ? 0.7 : 1
-            }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              {isCheckingUpdates ? (
-                <View style={{ width: 20, height: 20, justifyContent: 'center', alignItems: 'center' }}>
-                  <Text style={{ color: 'white', fontSize: 16 }}>⟳</Text>
-                </View>
-              ) : (
-                <Ionicons name="refresh" size={20} color="white" />
-              )}
-              <Text style={{
-                fontSize: 16,
-                fontWeight: '600',
-                color: 'white',
-                marginLeft: 8
-              }}>
-                {isCheckingUpdates ? 'Verificando...' : 'Verificar Actualizaciones'}
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          {/* Botón Descargar Actualización (solo si hay actualización disponible) */}
-          {showDownloadButton && (
+          {showDownloadButton ? (
             <TouchableOpacity
               onPress={onFetchUpdateAsync}
               style={{
@@ -663,6 +625,41 @@ export default function Profile() {
                   marginLeft: 8
                 }}>
                   Descargar Actualización
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              onPress={checkForUpdates}
+              disabled={isCheckingUpdates}
+              style={{
+                backgroundColor: isCheckingUpdates ? '#bdc3c7' : '#3498db',
+                borderRadius: 12,
+                paddingVertical: 20,
+                alignItems: 'center',
+                shadowColor: '#000',
+                shadowOpacity: 0.1,
+                shadowRadius: 8,
+                shadowOffset: { width: 0, height: 2 },
+                elevation: 4,
+                opacity: isCheckingUpdates ? 0.7 : 1
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                {isCheckingUpdates ? (
+                  <View style={{ width: 20, height: 20, justifyContent: 'center', alignItems: 'center' }}>
+                    <Text style={{ color: 'white', fontSize: 16 }}>⟳</Text>
+                  </View>
+                ) : (
+                  <Ionicons name="refresh" size={20} color="white" />
+                )}
+                <Text style={{
+                  fontSize: 16,
+                  fontWeight: '600',
+                  color: 'white',
+                  marginLeft: 8
+                }}>
+                  {isCheckingUpdates ? 'Verificando...' : 'Verificar Actualizaciones'}
                 </Text>
               </View>
             </TouchableOpacity>

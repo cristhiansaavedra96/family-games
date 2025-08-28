@@ -22,7 +22,7 @@ class AvatarCache {
     // Primero verificar memoria
     const memoryKey = `${username}:${avatarId}`;
     if (this.memoryCache.has(memoryKey)) {
-      console.log(`🎯 Avatar cache HIT (memory): ${username} -> ${avatarId}`);
+  // console.log(`🎯 Avatar cache HIT (memory): ${username} -> ${avatarId}`);
       return this.memoryCache.get(memoryKey);
     }
 

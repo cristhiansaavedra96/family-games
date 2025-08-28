@@ -1,12 +1,14 @@
 import React from 'react';
 import { View, Text, Platform } from 'react-native';
 import Animated from 'react-native-reanimated';
+import { getBingoColorByIndexOrNumber } from './BingoCard';
 
 function AnimatedBingoBallBase({ 
   ballAnimatedStyle, 
   lastBall, 
   style = {} 
 }) {
+  const ballColor = getBingoColorByIndexOrNumber(lastBall);
   return (
     <View style={[{ alignItems:'center' }, style]}>
       <Animated.View style={[
@@ -14,12 +16,12 @@ function AnimatedBingoBallBase({
           width: 100, 
           height: 100, 
           borderRadius: 50, 
-          backgroundColor: '#e74c3c', 
+          backgroundColor: ballColor, 
           borderWidth: 6, 
           borderColor: '#fff', 
           alignItems: 'center', 
           justifyContent: 'center', 
-          shadowColor: '#e74c3c', 
+          shadowColor: ballColor, 
           shadowOpacity: 0.3, 
           shadowRadius: 12, 
           shadowOffset: { width: 0, height: 4 }, 
@@ -30,9 +32,7 @@ function AnimatedBingoBallBase({
         <Text style={{ 
           color: '#fff', 
           fontSize: 56, 
-          // Usar la fuente Mukta para los números de bolilla
           fontFamily: 'Mukta_700Bold',
-          // Centrado vertical más preciso con Mukta
           lineHeight: 58,
           includeFontPadding: false, // Android
           textAlignVertical: 'center', // Android

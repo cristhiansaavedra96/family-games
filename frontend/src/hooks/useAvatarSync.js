@@ -1,7 +1,7 @@
 // src/hooks/useAvatarSync.js
 // Hook para sincronización inteligente de avatares
 import { useState, useEffect, useCallback } from 'react';
-import avatarCache from '../avatarCache';
+import { getAvatarFromCache, saveAvatarToCache } from '../services/avatarCache';
 import socket from '../socket';
 
 export const useAvatarSync = () => {
@@ -13,7 +13,7 @@ export const useAvatarSync = () => {
     if (!username || !avatarId) return null;
 
     // Verificar si ya tenemos este avatar en caché
-    const cached = await avatarCache.getAvatar(username, avatarId);
+    const cached = await getAvatarFromCache(avatarId);
     if (cached) {
       setAvatarUrls(prev => new Map(prev.set(username, cached)));
       return cached;
@@ -41,7 +41,7 @@ export const useAvatarSync = () => {
           const { avatarUrl } = response.avatar;
           
           // Guardar en caché
-          await avatarCache.setAvatar(username, avatarId, avatarUrl);
+          await saveAvatarToCache(avatarId, avatarUrl);
           
           // Actualizar estado
           setAvatarUrls(prev => new Map(prev.set(username, avatarUrl)));

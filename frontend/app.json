@@ -1,10 +1,11 @@
 {
   "expo": {
-    "name": "familyGames",
+    "name": "Juegos",
     "slug": "familygames",
     "scheme": "familygames",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "updates": {
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
@@ -20,10 +21,15 @@
     "android": {
       "package": "com.familygames.app",
       "versionCode": 1,
-      "permissions": []
+      "permissions": [],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#FFFFFF"
+      }
     },
     "web": {
-      "bundler": "metro"
+      "bundler": "metro",
+      "favicon": "./assets/icon.png"
     },
     "extra": {
       "EXPO_PUBLIC_API_URL": "https://family-games-backend-production.up.railway.app",

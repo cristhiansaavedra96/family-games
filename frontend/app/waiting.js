@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { View, Text, Image, TouchableOpacity, FlatList, ScrollView, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -11,13 +11,25 @@ import { useAvatarSync } from '../src/hooks/useAvatarSync';
 const { width } = Dimensions.get('window');
 
 export default function Waiting() {
-  const { roomId } = useLocalSearchParams();
-  const [state, setState] = useState({ roomId, name: '', players: [], hostId: null, started: false, cardsPerPlayer: 1 });
+  const { roomId, initialState } = useLocalSearchParams();
+  // Si initialState viene como string, parsear una sola vez
+  const parsedInitial = useMemo(() => {
+    if (initialState) {
+      try {
+        return JSON.parse(initialState);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }, [initialState]);
+  const [state, setState] = useState(parsedInitial || { roomId, name: '', players: [], hostId: null, started: false, cardsPerPlayer: 1 });
   const [me, setMe] = useState(null);
   const [chatVisible, setChatVisible] = useState(false);
   const [currentMessage, setCurrentMessage] = useState(null); // legacy
   const [toastMessages, setToastMessages] = useState([]);
   const { syncPlayers, getAvatarUrl } = useAvatarSync();
+  const [changingCards, setChangingCards] = useState(false);
 
   useEffect(() => {
     setMe(socket.id);
@@ -25,9 +37,10 @@ export default function Waiting() {
     const onState = (s) => {
       if (s.roomId === roomId) {
         setState(s);
+        setChangingCards(false); // Liberar bloqueo al recibir nuevo estado
         // Sincronizar avatares cuando cambien los jugadores
         if (s.players && s.players.length > 0) {
-          console.log('🔄 Waiting - Syncing avatars for players:', s.players.map(p => p.username));
+          // console.log('🔄 Waiting - Syncing avatars for players:', s.players.map(p => p.username));
           syncPlayers(s.players);
         }
       }
@@ -46,7 +59,10 @@ export default function Waiting() {
     socket.on('joined', onJoined);
     socket.on('connect', onConnect);
     socket.on('chatMessage', onChatMessage);
-    socket.emit('getState', { roomId });
+    // Solo pedir el estado si no tenemos uno inicial
+    if (!parsedInitial) {
+      socket.emit('getState', { roomId });
+    }
     
     return () => { 
       socket.off('state', onState); 
@@ -58,7 +74,12 @@ export default function Waiting() {
 
   const isHost = state.hostId === me;
   const start = () => socket.emit('startGame', { roomId });
-  const setCards = (n) => socket.emit('configure', { roomId, cardsPerPlayer: n });
+const setCards = (n) => {
+  if (changingCards) return;
+  setChangingCards(true);
+  setState(prev => ({ ...prev, cardsPerPlayer: n }));
+  socket.emit('configure', { roomId, cardsPerPlayer: n });
+};
   
   // Función para salir de la sala
   const leaveRoom = () => {
@@ -332,6 +353,7 @@ export default function Waiting() {
                   <View style={{ flexDirection: 'row', marginBottom: 16 }}>
                     {[1, 2, 3, 4].map(n => (
                       <TouchableOpacity
+                        disabled={changingCards}
                         key={n}
                         onPress={() => setCards(n)}
                         style={{
@@ -339,7 +361,8 @@ export default function Waiting() {
                           paddingVertical: 8,
                           paddingHorizontal: 16,
                           borderRadius: 8,
-                          marginRight: 8
+                          marginRight: 8,
+                          opacity: changingCards ? 0.6 : 1,
                         }}
                       >
                         <Text style={{

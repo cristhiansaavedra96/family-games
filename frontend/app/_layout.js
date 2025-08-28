@@ -3,6 +3,7 @@ import { useFonts, Montserrat_400Regular, Montserrat_500Medium, Montserrat_600Se
 import { Mukta_400Regular, Mukta_700Bold, Mukta_600SemiBold } from '@expo-google-fonts/mukta';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
+import { purgeLegacyAvatarCache, cleanOldCache } from '../src/services/avatarCache';
 
 // Mantener la pantalla de splash hasta que las fuentes estén cargadas
 SplashScreen.preventAutoHideAsync();
@@ -23,6 +24,16 @@ export default function Layout() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded]);
+
+  // Purga global del caché legado al arrancar para evitar SQLITE_FULL
+  useEffect(() => {
+    (async () => {
+      try {
+        await purgeLegacyAvatarCache();
+        await cleanOldCache();
+      } catch {}
+    })();
+  }, []);
 
   if (!fontsLoaded) {
     return null;
