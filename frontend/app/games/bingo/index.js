@@ -5,18 +5,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import socket from '../src/socket';
-import { Bingo } from '../src/games';
-import { getBingoColorByIndexOrNumber } from '../src/games/bingo/components/BingoCard';
+import socket from '../../../src/socket';
+import { Bingo } from '../../../src/games';
+import { getBingoColorByIndexOrNumber } from '../../../src/games/bingo/components/BingoCard';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
-import { ChatPanel, ChatButton, ChatToasts } from '../src/components';
-import { useAvatarSync } from '../src/hooks/useAvatarSync';
+import { ChatPanel, ChatButton, ChatToasts } from '../../../src/components';
+import { useAvatarSync } from '../../../src/hooks/useAvatarSync';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
-import { getUsername } from '../src/utils';
-import { saveAvatarToCache } from '../src/services/avatarCache';
-import { useMyAvatar } from '../src/hooks/useMyAvatar';
-import { useBingoSound } from '../src/sound/useBingoSound';
+import { getUsername } from '../../../src/utils';
+import { saveAvatarToCache } from '../../../src/services/avatarCache';
+import { useMyAvatar } from '../../../src/hooks/useMyAvatar';
+import { useBingoSound } from '../../../src/sound/useBingoSound';
 
 import { ActivityIndicator } from 'react-native';
 

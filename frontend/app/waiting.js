@@ -46,7 +46,7 @@ export default function Waiting() {
       }
       if (s.started) {
         // Determinar qué juego usar basado en el gameKey del estado
-        const gameRoute = s.gameKey === 'bingo' ? '/game/' : '/game/'; // por defecto bingo
+        const gameRoute = s.gameKey === 'bingo' ? '/games/bingo/' : '/games/bingo/'; // por defecto bingo
         router.replace({ pathname: gameRoute, params: { roomId } });
       }
     };

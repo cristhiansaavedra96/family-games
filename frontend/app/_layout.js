@@ -84,7 +84,6 @@ export default function Layout() {
       <Stack.Screen name="waiting" options={{ headerShown: false }} />
       <Stack.Screen name="summary" options={{ title: 'Resumen' }} />
       <Stack.Screen name="leaderboard" options={{ headerShown: false }} />
-      <Stack.Screen name="game" options={{ headerShown: false }} />
     </Stack>
   );
 }

@@ -25,7 +25,7 @@ export default function Summary() {
     // Host reinicia la partida con la misma configuración
     socket.emit('startGame', { roomId });
     // Determinar qué juego usar basado en el gameKey
-    const gameRoute = '/game/'; // por ahora solo bingo
+    const gameRoute = '/games/bingo/'; // por ahora solo bingo
     router.replace({ pathname: gameRoute, params: { roomId } });
   };
 
