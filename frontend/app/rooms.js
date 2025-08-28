@@ -344,7 +344,7 @@ export default function Rooms() {
             >
               {/* Back button */}
               <TouchableOpacity 
-                onPress={() => router.push('/games')} 
+                onPress={() => router.push('/gameSelect')} 
                 style={{
                   position: 'absolute',
                   top: 60,

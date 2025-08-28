@@ -25,7 +25,7 @@ export default function Login() {
     const success = await setUsername(username.trim());
     
     if (success) {
-      router.replace('/games');
+      router.replace('/gameSelect');
     } else {
       Alert.alert('Error', 'No se pudo guardar el nombre de usuario');
     }

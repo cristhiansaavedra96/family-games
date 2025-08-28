@@ -44,7 +44,11 @@ export default function Waiting() {
           syncPlayers(s.players);
         }
       }
-      if (s.started) router.replace({ pathname: '/game', params: { roomId } });
+      if (s.started) {
+        // Determinar qué juego usar basado en el gameKey del estado
+        const gameRoute = s.gameKey === 'bingo' ? '/game/' : '/game/'; // por defecto bingo
+        router.replace({ pathname: gameRoute, params: { roomId } });
+      }
     };
     const onJoined = ({ id }) => setMe(id);
     const onChatMessage = (messageData) => {
@@ -230,18 +234,6 @@ const setCards = (n) => {
           }}>
             Listo para jugar
           </Text>
-        </View>
-        
-        {/* Icono de ready/status */}
-        <View style={{
-          width: 32,
-          height: 32,
-          borderRadius: 16,
-          backgroundColor: '#27ae60',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}>
-          <Ionicons name="checkmark" size={18} color="white" />
         </View>
       </View>
     );

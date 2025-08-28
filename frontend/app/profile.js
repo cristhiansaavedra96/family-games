@@ -5,7 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
-import * as Updates from 'expo-updates';
+// import * as Updates from 'expo-updates';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import socket from '../src/socket';
@@ -18,13 +18,9 @@ export default function Profile() {
   const [isLoading, setIsLoading] = useState(false);
   const [username, setUsername] = useState(null);
   const [socketConnected, setSocketConnected] = useState(false);
-  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
 
-  // Estados para actualizaciones
-  const {
-    isUpdateAvailable,
-    isUpdatePending
-  } = Updates.useUpdates();
+
+
 
   // Cargar datos existentes
   useEffect(() => {
@@ -257,7 +253,7 @@ export default function Profile() {
       });
       
       console.log('Profile updated successfully:', response.player);
-      router.replace('/games');
+      router.replace('/gameSelect');
 
     } catch (error) {
       console.error('Error saving profile:', error);
@@ -281,58 +277,7 @@ export default function Profile() {
     return name.trim().split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?';
   };
 
-  // Funciones para actualizaciones
-  const checkForUpdates = async () => {
-    setIsCheckingUpdates(true);
-    try {
-      const update = await Updates.checkForUpdateAsync();
-      if (!update.isAvailable) {
-        Alert.alert('Actualizaciones', 'No hay actualizaciones disponibles');    
-      } else {
-        Alert.alert('Actualización disponible', 'Se encontró una actualización disponible');
-      }
-    } catch (error) {
-      console.log(`Error checking for updates: ${error}`);
-      Alert.alert('Error', 'No se pudo verificar actualizaciones');
-    } finally {
-      setIsCheckingUpdates(false);
-    }
-  };
 
-  const onFetchUpdateAsync = async () => {
-    console.log('[Profile] onFetchUpdateAsync ejecutado');
-    try {
-      const update = await Updates.checkForUpdateAsync();
-      if (update.isAvailable) {
-        Alert.alert(
-          'Actualización disponible',
-          '¿Deseas descargar e instalar la actualización ahora?',
-          [
-            { text: 'Cancelar', style: 'cancel' },
-            {
-              text: 'Actualizar',
-              onPress: async () => {
-                try {
-                  await Updates.fetchUpdateAsync();
-                  await Updates.reloadAsync();
-                } catch (e) {
-                  console.log('Error en fetch/reload update:', e);
-                  Alert.alert('Error', 'No se pudo aplicar la actualización: ' + (e?.message || e));
-                }
-              }
-            }
-          ]
-        );
-      } else {
-        Alert.alert('Actualización', 'No hay actualización disponible.');
-      }
-    } catch (error) {
-      console.log(`Error fetching update: ${error}`);
-      Alert.alert('Error', 'No se pudo descargar la actualización: ' + (error?.message || error));
-    }
-  };
-
-  const showDownloadButton = isUpdateAvailable || isUpdatePending;
 
   return (
     <>
@@ -607,72 +552,7 @@ export default function Profile() {
           </TouchableOpacity>
         </View>
 
-        {/* Sección de Actualizaciones */}
-        <View style={{ marginTop: 0, paddingHorizontal: 20 }}>
-          {showDownloadButton ? (
-            <TouchableOpacity
-              onPress={onFetchUpdateAsync}
-              style={{
-                backgroundColor: '#e74c3c',
-                borderRadius: 12,
-                paddingVertical: 16,
-                alignItems: 'center',
-                shadowColor: '#000',
-                shadowOpacity: 0.1,
-                shadowRadius: 8,
-                shadowOffset: { width: 0, height: 2 },
-                elevation: 4
-              }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Ionicons name="download" size={20} color="white" />
-                <Text style={{
-                  fontSize: 16,
-                  fontWeight: '600',
-                  color: 'white',
-                  marginLeft: 8
-                }}>
-                  Descargar Actualización
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              onPress={checkForUpdates}
-              disabled={isCheckingUpdates}
-              style={{
-                backgroundColor: isCheckingUpdates ? '#bdc3c7' : '#3498db',
-                borderRadius: 12,
-                paddingVertical: 20,
-                alignItems: 'center',
-                shadowColor: '#000',
-                shadowOpacity: 0.1,
-                shadowRadius: 8,
-                shadowOffset: { width: 0, height: 2 },
-                elevation: 4,
-                opacity: isCheckingUpdates ? 0.7 : 1
-              }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                {isCheckingUpdates ? (
-                  <View style={{ width: 20, height: 20, justifyContent: 'center', alignItems: 'center' }}>
-                    <Text style={{ color: 'white', fontSize: 16 }}>⟳</Text>
-                  </View>
-                ) : (
-                  <Ionicons name="refresh" size={20} color="white" />
-                )}
-                <Text style={{
-                  fontSize: 16,
-                  fontWeight: '600',
-                  color: 'white',
-                  marginLeft: 8
-                }}>
-                  {isCheckingUpdates ? 'Verificando...' : 'Verificar Actualizaciones'}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          )}
-        </View>
+
         
         </ScrollView>
         </SafeAreaView>

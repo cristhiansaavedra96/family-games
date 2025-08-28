@@ -24,7 +24,9 @@ export default function Summary() {
   const playAgain = () => {
     // Host reinicia la partida con la misma configuración
     socket.emit('startGame', { roomId });
-    router.replace({ pathname: '/game', params: { roomId } });
+    // Determinar qué juego usar basado en el gameKey
+    const gameRoute = '/game/'; // por ahora solo bingo
+    router.replace({ pathname: gameRoute, params: { roomId } });
   };
 
   const renderItem = ([key, pid]) => {

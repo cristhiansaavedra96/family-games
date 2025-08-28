@@ -10,6 +10,7 @@ const EMOJIS = [
   { emoji: '😅', label: 'Nervioso' },
   { emoji: '😎', label: 'Genial' },
   { emoji: '😡', label: 'Enojado' },
+  { emoji: '😢', label: 'Triste' },
   { emoji: '🤔', label: 'Pensando' },
   { emoji: '😱', label: 'Sorprendido' },
   { emoji: '🥳', label: 'Celebrando' },
@@ -19,16 +20,15 @@ const EMOJIS = [
 ];
 
 const QUICK_MESSAGES = [
+  'Hola',
   '¡Buena suerte!',
+  'Me falta una',
+  'Casi completo',
+  'Qué nervios',
+  'No me sale nada',
   '¡Vamos!',
-  'Casi...',
-  '¡Por poco!',
-  '¡Increíble!',
-  'Esperando...',
-  '¡Dale!',
-  '¿En serio?',
-  'gg',
-  '¡Otra vez!'
+  '¡Felicitaciones!',
+  'Facilitoo',
 ];
 
 function ChatPanel({ isVisible, onClose, onSendMessage }) {

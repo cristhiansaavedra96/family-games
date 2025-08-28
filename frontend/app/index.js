@@ -14,7 +14,7 @@ export default function Home() {
       
       const name = await AsyncStorage.getItem('profile:name');
       if (!name) router.replace('/profile');
-      else router.replace('/games');
+      else router.replace('/gameSelect');
     })();
   }, []);
   return null;

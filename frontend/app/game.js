@@ -18,6 +18,8 @@ import { saveAvatarToCache } from '../src/services/avatarCache';
 import { useMyAvatar } from '../src/hooks/useMyAvatar';
 import { useBingoSound } from '../src/sound/useBingoSound';
 
+import { ActivityIndicator } from 'react-native';
+
 export default function Game() {
   const insets = useSafeAreaInsets();
   const { syncPlayers, getAvatarUrl, syncAvatar, setLocalAvatarUrl } = useAvatarSync();
@@ -46,6 +48,7 @@ export default function Game() {
   const [chatVisible, setChatVisible] = useState(false);
   const [currentMessage, setCurrentMessage] = useState(null); // deprecated, mantenido temporalmente
   const [toastMessages, setToastMessages] = useState([]);
+  const [showSpeedSelect, setShowSpeedSelect] = useState(false);
   const {
     startBackground,
     stopBackground,
@@ -54,6 +57,7 @@ export default function Game() {
     effectsMuted,
     setEffectsMuted,
     playEffect,
+    assetsReady
   } = useBingoSound();
 
   // Hook de animaciones del bingo
@@ -66,7 +70,6 @@ export default function Game() {
   
   const prevLastBall = useRef(null);
   const hasGameStartedRef = useRef(false);
-  const playEffectSafe = playEffect;
 
   // Ref para mantener la lista anterior de jugadores y evitar sincronizaciones innecesarias
   const previousPlayersRef = useRef([]);
@@ -111,12 +114,18 @@ export default function Game() {
       if (!hasGameStartedRef.current) {
         hasGameStartedRef.current = true;
       }
+      
+      // Actualizar inmediatamente el estado con la nueva bolilla para que aparezca en el historial
+      setState(prevState => ({
+        ...prevState,
+        lastBall: n,
+        drawn: [...(prevState.drawn || []), n]
+      }));
+      
       // Mostrar el número nuevo durante la animación
       setAnimBall(n);
       animateNewBall(showNumbers);
-      if (!effectsMuted) {
-        Bingo.speakNumberBingo(n);
-      }
+      Bingo.speakNumberBingo(n);
       // Cuando termina la animación, mantener el número hasta que el estado global cambie
       // y evitar parpadeo con el anterior
       setTimeout(() => {
@@ -137,7 +146,7 @@ export default function Game() {
         const myId = me;
         const fullWinner = payload?.figuresClaimed?.full;
         if (fullWinner && fullWinner === myId) {
-          playEffectSafe('win');
+          playEffect('win');
         }
       } catch {}
     });
@@ -146,9 +155,9 @@ export default function Game() {
       if (Array.isArray(payload?.figures) && payload.figures.length > 0) {
         if (payload.figures.includes('full')) {
           // Win suena para todos cuando hay cartón lleno
-          playEffectSafe('win');
+          playEffect('win');
         } else if (payload.playerId === me) {
-          playEffectSafe('logro');
+          playEffect('logro');
         }
       }
       // Sincronizar avatar del jugador del anuncio
@@ -194,9 +203,9 @@ export default function Game() {
         try {
           const figs = Array.isArray(result?.figures) ? result.figures : [];
           if (figs.includes('full')) {
-            playEffectSafe('win');
+            playEffect('win');
           } else if (figs.length > 0) {
-            playEffectSafe('logro');
+            playEffect('logro');
           }
         } catch {}
       }
@@ -425,7 +434,7 @@ export default function Game() {
         if (!(r === 2 && c === 2)) {
           // Sonido al seleccionar una ficha (solo cuando se marca)
           if (!prevVal) {
-            playEffectSafe('select');
+            playEffect('select');
           }
           grid[r][c] = !grid[r][c];
         }
@@ -588,12 +597,7 @@ export default function Game() {
             </TouchableOpacity>
             {/* Velocidad (host editable, otros lectura) */}
             {state.hostId === me ? (
-              <TouchableOpacity onPress={() => {
-                const list = [0.5, 1, 1.5, 2];
-                const idx = Math.max(0, list.indexOf(state.speed));
-                const next = list[(idx + 1) % list.length];
-                socket.emit('setSpeed', { roomId: state.roomId || params.roomId, speed: next });
-              }} style={{ marginLeft: 8, height: 40, borderRadius: 20, backgroundColor: '#fff', alignItems:'center', justifyContent:'center', paddingHorizontal: 16, flexDirection:'row', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
+              <TouchableOpacity onPress={() => setShowSpeedSelect(true)} style={{ marginLeft: 8, height: 40, borderRadius: 20, backgroundColor: '#fff', alignItems:'center', justifyContent:'center', paddingHorizontal: 16, flexDirection:'row', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
                 <MaterialCommunityIcons name="fast-forward" size={18} color="#2c3e50" />
                 <Text style={{ marginLeft: 8, fontWeight:'700', color:'#2c3e50', fontSize: 14, fontFamily: 'Montserrat_700Bold' }}>{(state.speed||1)}x</Text>
               </TouchableOpacity>
@@ -656,127 +660,136 @@ export default function Game() {
     </View>
   );
 
+  if (!assetsReady) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#2c3e50' }}>
+        <ActivityIndicator size="large" color="#e74c3c" />
+        <Text style={{ color: 'white', marginTop: 16, fontSize: 18, fontWeight: '700', fontFamily: 'Montserrat_700Bold' }}>Cargando sonidos...</Text>
+      </View>
+    );
+  }
+
   return (
     <>
       <StatusBar style="light" />
       <View style={{ flex: 1, backgroundColor: '#2c3e50' }}>
         <Header />
         {/* zona de cartones con altura dinámica */}
-  <View style={{ flex: 1, paddingHorizontal: 0, paddingTop: 4, backgroundColor: '#f5f7fa' }} onLayout={(e)=>{ setAreaW(e.nativeEvent.layout.width); setAreaH(e.nativeEvent.layout.height); }}>
-      {(() => {
-        const count = myPlayer?.cards?.length || 0;
-        // Calculamos la altura disponible real para los cartones
-        const availableHeight = areaH; // Ya no consideramos header/footer aquí porque flex: 1 se encarga
-        
-        // Función para renderizar cartones según la cantidad con altura dinámica
-        const renderCards = () => {
-          const cards = myPlayer?.cards || [];
-          const completedFigures = getMyCompletedFigures();
-          
-          if (count === 1) {
-            // Un cartón: optimizado para usar todo el espacio disponible
-            const widthTarget = Math.min(areaW * 0.85, 340);
-            const maxCardHeight = availableHeight * 0.8;
-            const computedAspect = Math.min(1.3, Math.max(0.9, widthTarget / maxCardHeight));
+        <View style={{ flex: 1, paddingHorizontal: 0, paddingTop: 4, backgroundColor: '#f5f7fa' }} onLayout={(e)=>{ setAreaW(e.nativeEvent.layout.width); setAreaH(e.nativeEvent.layout.height); }}>
+          {(() => {
+            const count = myPlayer?.cards?.length || 0;
+            // Calculamos la altura disponible real para los cartones
+            const availableHeight = areaH; // Ya no consideramos header/footer aquí porque flex: 1 se encarga
             
-            return (
-              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 16 }}>
-                <View style={{ width: widthTarget, maxWidth: '100%' }}>
-                  <Bingo.BingoCard 
-                    card={cards[0]} 
-                    drawn={state.drawn} 
-                    marked={localMarks[0]} 
-                    onToggle={(r,c) => toggle(0,r,c)} 
-                    cellAspect={computedAspect} 
-                    size="large"
-                    specificFigures={getCardSpecificFigures(0)}
-                    cardIndex={0}
-                  />
-                </View>
-              </View>
-            );
-          }
-          
-          if (count === 2) {
-            // Dos cartones: mismo tamaño que 4 cartones pero centrados
-            const spacing = 6;
-            const cardWidth = (areaW - (spacing * 3)) / 2; // Mismo cálculo que para 4 cartones
-            const maxCardHeight = (availableHeight - (spacing * 4)) / 2.2; // Mismo cálculo que para 4 cartones
-            const computedAspect = Math.min(1.5, Math.max(1.0, cardWidth / maxCardHeight));
-            
-            return (
-              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing }}>
-                <View style={{ width: cardWidth }}>
-                  {cards.map((card, i) => (
-                    <View key={i} style={{ marginBottom: i === 0 ? spacing : 0 }}>
+            // Función para renderizar cartones según la cantidad con altura dinámica
+            const renderCards = () => {
+              const cards = myPlayer?.cards || [];
+              const completedFigures = getMyCompletedFigures();
+              
+              if (count === 1) {
+                // Un cartón: optimizado para usar todo el espacio disponible
+                const widthTarget = Math.min(areaW * 0.85, 340);
+                const maxCardHeight = availableHeight * 0.8;
+                const computedAspect = Math.min(1.3, Math.max(0.9, widthTarget / maxCardHeight));
+                
+                return (
+                  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 16 }}>
+                    <View style={{ width: widthTarget, maxWidth: '100%' }}>
                       <Bingo.BingoCard 
-                        card={card} 
+                        card={cards[0]} 
                         drawn={state.drawn} 
-                        marked={localMarks[i]} 
-                        onToggle={(r,c) => toggle(i,r,c)} 
+                        marked={localMarks[0]} 
+                        onToggle={(r,c) => toggle(0,r,c)} 
                         cellAspect={computedAspect} 
-                        size="small"
-                        compact
-                        specificFigures={getCardSpecificFigures(i)}
-                        cardIndex={i}
+                        size="large"
+                        specificFigures={getCardSpecificFigures(0)}
+                        cardIndex={0}
                       />
                     </View>
-                  ))}
-                </View>
-              </View>
-            );
-          }
-          
-          if (count >= 3) {
-            // Tres o más cartones: cuadrícula más compacta
-            const spacing = 6;
-            const cardWidth = (areaW - (spacing * 3)) / 2; // 2 columnas
-            const maxCardHeight = (availableHeight - (spacing * 4)) / 2.2; // 2 filas con más margen
-            const computedAspect = Math.min(1.5, Math.max(1.0, cardWidth / maxCardHeight));
-            
-            return (
-              <View style={{ flex: 1, paddingHorizontal: spacing, paddingTop: 4 }}>
-                <View style={{ 
-                  flexDirection: 'row', 
-                  flexWrap: 'wrap', 
-                  justifyContent: 'space-between',
-                  alignContent: 'flex-start'
-                }}>
-                  {cards.map((card, i) => (
-                    <View 
-                      key={i} 
-                      style={{ 
-                        width: cardWidth, 
-                        marginBottom: spacing,
-                        // Para centrar si hay número impar de cartones
-                        ...(count % 2 !== 0 && i === count - 1 ? { alignSelf: 'center' } : {})
-                      }}
-                    >
-                      <Bingo.BingoCard 
-                        card={card} 
-                        drawn={state.drawn} 
-                        marked={localMarks[i]} 
-                        onToggle={(r,c) => toggle(i,r,c)} 
-                        cellAspect={computedAspect} 
-                        size="small"
-                        compact
-                        specificFigures={getCardSpecificFigures(i)}
-                        cardIndex={i}
-                      />
+                  </View>
+                );
+              }
+              
+              if (count === 2) {
+                // Dos cartones: mismo tamaño que 4 cartones pero centrados
+                const spacing = 6;
+                const cardWidth = (areaW - (spacing * 3)) / 2; // Mismo cálculo que para 4 cartones
+                const maxCardHeight = (availableHeight - (spacing * 4)) / 2.2; // Mismo cálculo que para 4 cartones
+                const computedAspect = Math.min(1.5, Math.max(1.0, cardWidth / maxCardHeight));
+                
+                return (
+                  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing }}>
+                    <View style={{ width: cardWidth }}>
+                      {cards.map((card, i) => (
+                        <View key={i} style={{ marginBottom: i === 0 ? spacing : 0 }}>
+                          <Bingo.BingoCard 
+                            card={card} 
+                            drawn={state.drawn} 
+                            marked={localMarks[i]} 
+                            onToggle={(r,c) => toggle(i,r,c)} 
+                            cellAspect={computedAspect} 
+                            size="small"
+                            compact
+                            specificFigures={getCardSpecificFigures(i)}
+                            cardIndex={i}
+                          />
+                        </View>
+                      ))}
                     </View>
-                  ))}
-                </View>
-              </View>
-            );
-          }
-          
-          return null;
-        };
-        
-        return renderCards();
-      })()}
-    </View>
-  </View>
+                  </View>
+                );
+              }
+              
+              if (count >= 3) {
+                // Tres o más cartones: cuadrícula más compacta
+                const spacing = 6;
+                const cardWidth = (areaW - (spacing * 3)) / 2; // 2 columnas
+                const maxCardHeight = (availableHeight - (spacing * 4)) / 2.2; // 2 filas con más margen
+                const computedAspect = Math.min(1.5, Math.max(1.0, cardWidth / maxCardHeight));
+                
+                return (
+                  <View style={{ flex: 1, paddingHorizontal: spacing, paddingTop: 4 }}>
+                    <View style={{ 
+                      flexDirection: 'row', 
+                      flexWrap: 'wrap', 
+                      justifyContent: 'space-between',
+                      alignContent: 'flex-start'
+                    }}>
+                      {cards.map((card, i) => (
+                        <View 
+                          key={i} 
+                          style={{ 
+                            width: cardWidth, 
+                            marginBottom: spacing,
+                            // Para centrar si hay número impar de cartones
+                            ...(count % 2 !== 0 && i === count - 1 ? { alignSelf: 'center' } : {})
+                          }}
+                        >
+                          <Bingo.BingoCard 
+                            card={card} 
+                            drawn={state.drawn} 
+                            marked={localMarks[i]} 
+                            onToggle={(r,c) => toggle(i,r,c)} 
+                            cellAspect={computedAspect} 
+                            size="small"
+                            compact
+                            specificFigures={getCardSpecificFigures(i)}
+                            cardIndex={i}
+                          />
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                );
+              }
+              
+              return null;
+            };
+            
+            return renderCards();
+          })()}
+        </View>
+      </View>
 
       {/* Footer mejorado con BINGO y Chat */}
       <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16, backgroundColor: '#f5f7fa', flexDirection: 'row', alignItems: 'center', gap: 12 }} onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}>
@@ -898,7 +911,7 @@ export default function Game() {
               <TouchableOpacity 
                 onPress={() => {
                   setShowGameSummary(false);
-                  router.replace('/games');
+                  router.replace('/gameSelect');
                 }} 
                 style={{ 
                   flex: 1,
@@ -989,7 +1002,7 @@ export default function Game() {
       </Modal>
 
       {/* Figuras reclamadas y quién ganó cada una (arriba derecha) */}
-  <View style={{ position:'absolute', right:8, top: (insets.top || 0) + 6, alignItems:'flex-end' }}>
+      <View style={{ position:'absolute', right:8, top: (insets.top || 0) + 6, alignItems:'flex-end' }}>
         {['corners','row','column','diagonal','border','full'].map(key => {
           const pid = state.figuresClaimed?.[key];
           if (!pid) return null;
@@ -1037,7 +1050,7 @@ export default function Game() {
                   <Text style={{ fontWeight: '600', color: '#7f8c8d', fontFamily: 'Montserrat_600SemiBold' }}>Cancelar</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
-                  onPress={() => { allowExitRef.current = true; socket.emit('leaveRoom'); setShowExit(false); router.replace('/games'); }} 
+                  onPress={() => { allowExitRef.current = true; socket.emit('leaveRoom'); setShowExit(false); router.replace('/gameSelect'); }} 
                   style={{ flex: 1, padding:12, marginLeft: 8, backgroundColor: '#e74c3c', borderRadius: 12, alignItems: 'center' }}
                 >
                   <Text style={{ color:'#fff', fontWeight:'700', fontFamily: 'Montserrat_700Bold' }}>Salir</Text>
@@ -1090,8 +1103,49 @@ export default function Game() {
         </View>
       </Modal>
 
-  {/* Chat Toasts apilados a la derecha */}
-  <ChatToasts messages={toastMessages} onItemComplete={handleToastComplete} />
+      {/* Modal para seleccionar velocidad */}
+      <Modal
+        visible={showSpeedSelect}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSpeedSelect(false)}
+      >
+        <View style={{ flex:1, backgroundColor:'rgba(0,0,0,0.3)', justifyContent:'center', alignItems:'center' }}>
+          <View style={{ backgroundColor:'#fff', borderRadius:16, padding:24, minWidth:220, alignItems:'center' }}>
+            <Text style={{ fontWeight:'700', fontSize:18, marginBottom:16, color:'#2c3e50', fontFamily:'Montserrat_700Bold' }}>Velocidad de juego</Text>
+            {[0.5, 0.75, 1, 1.25, 1.5].map((v) => (
+              <TouchableOpacity
+                key={v}
+                onPress={() => {
+                  setShowSpeedSelect(false);
+                  if (v !== state.speed) {
+                    socket.emit('setSpeed', { roomId: state.roomId || params.roomId, speed: v });
+                  }
+                }}
+                style={{
+                  flexDirection:'row',
+                  alignItems:'center',
+                  paddingVertical:12,
+                  paddingHorizontal:24,
+                  borderRadius:12,
+                  marginBottom:8,
+                  backgroundColor: v === state.speed ? '#2c3e50' : '#f5f7fa',
+                  minWidth: 180
+                }}
+              >
+                <MaterialCommunityIcons name="fast-forward" size={18} color={v === state.speed ? '#fff' : '#2c3e50'} />
+                <Text style={{ marginLeft: 12, fontWeight:'700', color: v === state.speed ? '#fff' : '#2c3e50', fontSize: 16, fontFamily: 'Montserrat_700Bold' }}>{v}x</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity onPress={() => setShowSpeedSelect(false)} style={{ marginTop: 8 }}>
+              <Text style={{ color:'#e74c3c', fontWeight:'700', fontSize:16 }}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Chat Toasts apilados a la derecha */}
+      <ChatToasts messages={toastMessages} onItemComplete={handleToastComplete} />
 
       {/* Chat Panel */}
       <ChatPanel

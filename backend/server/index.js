@@ -681,7 +681,7 @@ io.on('connection', (socket) => {
   socket.on('setSpeed', ({ roomId, speed }) => {
     const room = rooms.get(roomId || socket.data.roomId);
     if (!room || socket.id !== room.hostId) return;
-    const allowed = [0.5, 1, 1.5, 2];
+    const allowed = [0.5, 0.75, 1, 1.25, 1.5];
     const s = Number(speed);
     if (!allowed.includes(s)) return;
     room.speed = s;
