@@ -16,6 +16,7 @@ export default function Rooms() {
   const [rooms, setRooms] = useState([]);
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
   const [joiningRoomId, setJoiningRoomId] = useState(null);
+  const [myUsername, setMyUsername] = useState(null);
   const { syncPlayers, getAvatarUrl, setLocalAvatarUrl } = useAvatarSync();
 
   // Log de caché de avatares al entrar a la lista de salas
@@ -67,6 +68,19 @@ export default function Rooms() {
     socket.on('rooms', onRooms);
     socket.emit('listRooms');
     
+    // Cargar mi username para comparar con jugadores en salas
+    const loadMyUsername = async () => {
+      try {
+        const username = await getUsername();
+        setMyUsername(username);
+        console.log('👤 My username loaded for room check:', username);
+      } catch (error) {
+        console.error('❌ Error loading username:', error);
+      }
+    };
+    
+    loadMyUsername();
+    
     // Cargar mi propio avatar para mostrarlo inmediatamente en las salas
     const loadMyAvatarForRooms = async () => {
       try {
@@ -105,25 +119,38 @@ export default function Rooms() {
     };
   }, []);
 
-  const openRoom = async (roomId) => {
+  const openRoom = async (roomId, isReconnect = false) => {
     if (joiningRoomId) return; // Prevenir múltiples clicks
     setJoiningRoomId(roomId);
     try {
       const name = await AsyncStorage.getItem('profile:name');
       const username = await getUsername();
-      // No enviar avatar - el servidor lo obtiene de la BD
-      socket.emit('joinRoom', { roomId, player: { name, username } });
-      // Escuchar respuesta del servidor
-      socket.once('joined', ({ roomId: joinedRoomId }) => {
-        setJoiningRoomId(null);
-        // Buscar el estado inicial de la sala
-        const room = rooms.find(r => r.id === joinedRoomId);
-        if (room) {
-          router.push({ pathname: '/waiting', params: { roomId: joinedRoomId, initialState: JSON.stringify(room) } });
-        } else {
-          router.push({ pathname: '/waiting', params: { roomId: joinedRoomId } });
-        }
-      });
+      
+      if (isReconnect) {
+        console.log('🔄 Reconnecting to game in progress:', roomId);
+        // Si es una reconexión, ir directamente al juego
+        socket.emit('joinRoom', { roomId, player: { name, username } });
+        socket.once('joined', ({ roomId: joinedRoomId }) => {
+          setJoiningRoomId(null);
+          // Ir directamente al juego en lugar de la sala de espera
+          router.push({ pathname: '/games/bingo', params: { roomId: joinedRoomId } });
+        });
+      } else {
+        // Flujo normal para salas que no han empezado
+        console.log('🚪 Joining waiting room:', roomId);
+        socket.emit('joinRoom', { roomId, player: { name, username } });
+        socket.once('joined', ({ roomId: joinedRoomId }) => {
+          setJoiningRoomId(null);
+          // Buscar el estado inicial de la sala
+          const room = rooms.find(r => r.id === joinedRoomId);
+          if (room) {
+            router.push({ pathname: '/waiting', params: { roomId: joinedRoomId, initialState: JSON.stringify(room) } });
+          } else {
+            router.push({ pathname: '/waiting', params: { roomId: joinedRoomId } });
+          }
+        });
+      }
+      
       // Timeout de seguridad
       setTimeout(() => {
         setJoiningRoomId(null);
@@ -179,9 +206,34 @@ export default function Rooms() {
     const isJoining = joiningRoomId === item.id;
     const cardsPerPlayer = item.cardsPerPlayer || 1;
     
+    // Verificar si estoy en esta sala (para permitir reconexión)
+    const amInThisRoom = myUsername && item.players.some(p => p.username === myUsername);
+    const canJoin = !isInGame || amInThisRoom;
+    const isReconnect = isInGame && amInThisRoom;
+    
+    // Determinar el estado de la sala
+    let statusText, statusColor, iconName;
+    if (isJoining) {
+      statusText = 'UNIÉNDOSE';
+      statusColor = '#f39c12';
+      iconName = 'hourglass';
+    } else if (isReconnect) {
+      statusText = 'RECONECTAR';
+      statusColor = '#3498db';
+      iconName = 'refresh';
+    } else if (isInGame) {
+      statusText = 'EN JUEGO';
+      statusColor = '#e74c3c';
+      iconName = 'lock-closed';
+    } else {
+      statusText = 'ESPERANDO';
+      statusColor = '#27ae60';
+      iconName = 'arrow-forward';
+    }
+    
     return (
       <TouchableOpacity 
-        onPress={() => openRoom(item.id)} 
+        onPress={() => openRoom(item.id, isReconnect)} 
         style={{ 
           backgroundColor: '#fff', 
           borderRadius: 16, 
@@ -192,10 +244,10 @@ export default function Rooms() {
           shadowOffset: { width: 0, height: 4 }, 
           elevation: 6,
           borderLeftWidth: 4,
-          borderLeftColor: isInGame ? '#e74c3c' : (isJoining ? '#f39c12' : '#27ae60'),
-          opacity: (isInGame || isJoining) ? 0.7 : 1
+          borderLeftColor: statusColor,
+          opacity: (!canJoin || isJoining) ? 0.7 : 1
         }}
-        disabled={isInGame || isJoining}
+        disabled={!canJoin || isJoining}
         activeOpacity={0.7}
       >
         <View style={{ padding: 16 }}>
@@ -206,9 +258,9 @@ export default function Rooms() {
                 <Text style={{ fontSize: 18, fontWeight: '700', color: '#2c3e50', marginRight: 8 }}>
                   Sala {item.id}
                 </Text>
-                {/* Badge de estado */}
+                {/* Badge de estado mejorado */}
                 <View style={{
-                  backgroundColor: isJoining ? '#f39c12' : (isInGame ? '#e74c3c' : '#27ae60'),
+                  backgroundColor: statusColor,
                   paddingHorizontal: 8,
                   paddingVertical: 3,
                   borderRadius: 10
@@ -219,9 +271,27 @@ export default function Rooms() {
                     fontWeight: '600',
                     textTransform: 'uppercase'
                   }}>
-                    {isJoining ? 'UNIÉNDOSE' : (isInGame ? 'EN JUEGO' : 'ESPERANDO')}
+                    {statusText}
                   </Text>
                 </View>
+                {/* Badge adicional si estoy en la sala */}
+                {amInThisRoom && (
+                  <View style={{
+                    backgroundColor: '#27ae60',
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                    borderRadius: 8,
+                    marginLeft: 6
+                  }}>
+                    <Text style={{ 
+                      color: 'white', 
+                      fontSize: 10, 
+                      fontWeight: '600'
+                    }}>
+                      TÚ
+                    </Text>
+                  </View>
+                )}
               </View>
               
               {/* Contador de jugadores y cartones */}
@@ -239,24 +309,43 @@ export default function Rooms() {
                   </Text>
                 </View>
               </View>
+              
+              {/* Mensaje adicional para reconexión */}
+              {isReconnect && (
+                <View style={{ 
+                  backgroundColor: '#e8f4f8', 
+                  paddingHorizontal: 8, 
+                  paddingVertical: 4, 
+                  borderRadius: 8, 
+                  marginTop: 8 
+                }}>
+                  <Text style={{ 
+                    color: '#2980b9', 
+                    fontSize: 12, 
+                    fontWeight: '600',
+                    textAlign: 'center'
+                  }}>
+                    🎮 Puedes volver a tu partida en progreso
+                  </Text>
+                </View>
+              )}
             </View>
             
-            {/* Icono de acción */}
+            {/* Icono de acción mejorado */}
             <View style={{ alignItems: 'center' }}>
               {isJoining ? (
                 <ActivityIndicator size={24} color="#f39c12" />
-              ) : isInGame ? (
-                <Ionicons name="lock-closed" size={24} color="#e74c3c" />
               ) : (
-                <Ionicons name="arrow-forward" size={24} color="#27ae60" />
+                <Ionicons name={iconName} size={24} color={statusColor} />
               )}
             </View>
           </View>
           
           {/* Avatares de jugadores */}
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            {item.players.slice(0, 5).map((p, index) => (
-              getAvatarUrl(p.username) ? (
+            {item.players.slice(0, 5).map((p, index) => {
+              const isMe = p.username === myUsername;
+              return getAvatarUrl(p.username) ? (
                 <Image 
                   key={p.id} 
                   source={{ 
@@ -267,14 +356,14 @@ export default function Rooms() {
                     height: 44, 
                     borderRadius: 22, 
                     marginRight: 10,
-                    borderWidth: 2,
-                    borderColor: '#fff',
+                    borderWidth: isMe ? 3 : 2,
+                    borderColor: isMe ? '#3498db' : '#fff',
                     shadowColor: '#000',
                     shadowOpacity: 0.1,
                     shadowRadius: 2,
                     elevation: 2
-                }} 
-              />
+                  }} 
+                />
               ) : (
                 <View 
                   key={p.id}
@@ -283,21 +372,21 @@ export default function Rooms() {
                     height: 44, 
                     borderRadius: 22, 
                     marginRight: 10,
-                    backgroundColor: '#f0f0f0',
+                    backgroundColor: isMe ? '#3498db' : '#f0f0f0',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    borderWidth: 2,
-                    borderColor: '#fff',
+                    borderWidth: isMe ? 3 : 2,
+                    borderColor: isMe ? '#2980b9' : '#fff',
                     shadowColor: '#000',
                     shadowOpacity: 0.1,
                     shadowRadius: 2,
                     elevation: 2
                   }}
                 >
-                  <Text style={{ fontSize: 12, color: '#666' }}>👤</Text>
+                  <Text style={{ fontSize: 12, color: isMe ? 'white' : '#666' }}>👤</Text>
                 </View>
-              )
-            ))}
+              );
+            })}
             {item.players.length > 5 && (
               <View style={{
                 width: 44,

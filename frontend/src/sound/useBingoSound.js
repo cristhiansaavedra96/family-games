@@ -116,8 +116,16 @@ export function useBingoSound() {
         clearInterval(bgFadeTimerRef.current); 
         bgFadeTimerRef.current = null; 
       }
-      if ('volume' in bg) bg.volume = 0;
-      if (typeof bg.pause === 'function') bg.pause();
+      
+      // Verificar que el reproductor no haya sido liberado
+      if (bg && typeof bg.pause === 'function') {
+        try {
+          if ('volume' in bg) bg.volume = 0;
+          bg.pause();
+        } catch (releaseError) {
+          console.warn('Background player was already released:', releaseError);
+        }
+      }
     } catch (error) {
       console.warn('Error stopping background:', error);
     }
@@ -209,6 +217,32 @@ export function useBingoSound() {
       });
     } catch {}
   }, [effectsMuted, sStart, sWin, sSelect, sLogro, assetsReady]);
+
+  // Limpieza al desmontar el componente
+  useEffect(() => {
+    return () => {
+      try {
+        if (bgFadeTimerRef.current) {
+          clearInterval(bgFadeTimerRef.current);
+          bgFadeTimerRef.current = null;
+        }
+        
+        // Limpiar todos los reproductores de audio
+        const players = [bg, sStart, sWin, sSelect, sLogro];
+        players.forEach(player => {
+          if (player && typeof player.pause === 'function') {
+            try {
+              player.pause();
+            } catch (e) {
+              // Player ya fue liberado, ignorar
+            }
+          }
+        });
+      } catch (error) {
+        console.warn('Error during audio cleanup:', error);
+      }
+    };
+  }, [bg, sStart, sWin, sSelect, sLogro]);
 
   return {
     startBackground,

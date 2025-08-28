@@ -1,6 +1,6 @@
 // Componentes del Bingo
 export { BingoCard } from './components/BingoCard';
-export { AnimatedBingoBall } from './components/AnimatedBingoBall';
+export { SimpleBingoBall } from './components/SimpleBingoBall';
 
 // Hooks del Bingo
 export { useBingoAnimations } from './hooks/useBingoAnimations';

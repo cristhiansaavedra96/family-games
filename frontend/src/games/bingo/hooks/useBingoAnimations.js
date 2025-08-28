@@ -1,112 +1,163 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { 
   useSharedValue, 
   useAnimatedStyle, 
   withTiming, 
-  withSpring, 
-  withSequence,
+  withSpring,
   runOnUI,
-  cancelAnimation
+  cancelAnimation,
+  Easing
 } from 'react-native-reanimated';
 
 export function useBingoAnimations() {
-  // Valores compartidos de Reanimated - corren en el hilo UI
+  // Valores compartidos para transiciones fluidas
   const ballScale = useSharedValue(1);
-  const ballRotation = useSharedValue(0);
+  const ballOpacity = useSharedValue(1);
   const ballTranslateY = useSharedValue(0);
+  const ballRotation = useSharedValue(0);
   const historyOpacity = useSharedValue(1);
+  
+  // Ref para evitar múltiples animaciones simultáneas
+  const isAnimatingRef = useRef(false);
+  const animationTimeoutRef = useRef(null);
 
-  // Función worklet que maneja las animaciones en el hilo UI
+  // Worklet para animación fluida: salida de la anterior + entrada de la nueva
   const animateBallWorklet = useCallback(() => {
     'worklet';
     
-    // Cancelar animaciones anteriores
+    // Cancelar animaciones previas
     cancelAnimation(ballScale);
-    cancelAnimation(ballRotation);
+    cancelAnimation(ballOpacity);
     cancelAnimation(ballTranslateY);
+    cancelAnimation(ballRotation);
     cancelAnimation(historyOpacity);
     
-    // Reiniciar posiciones
-    ballTranslateY.value = -200;
-    ballScale.value = 0.8;
-    ballRotation.value = 0;
-    
-    // Animación de caída con timing suave
-    ballTranslateY.value = withTiming(0, { 
-      duration: 600 
+    // FASE 1: Animación de salida de la bola anterior (rápida y sutil)
+    ballScale.value = withTiming(0.85, { 
+      duration: 150,
+      easing: Easing.in(Easing.ease)
     });
     
-    // Animación de escala con rebote
-    ballScale.value = withSequence(
-      withTiming(1.3, { duration: 400 }),
-      withSpring(1, { 
-        damping: 15,
-        stiffness: 150
-      })
-    );
+    ballOpacity.value = withTiming(0.3, { 
+      duration: 150,
+      easing: Easing.in(Easing.ease)
+    });
     
-    // Rotación suave
-    ballRotation.value = withTiming(360, { 
-      duration: 600 
+    ballTranslateY.value = withTiming(15, { 
+      duration: 150,
+      easing: Easing.in(Easing.ease)
     }, (finished) => {
       if (finished) {
-        ballRotation.value = 0; // Reset
+        // FASE 2: Preparar entrada de la nueva bola (desde arriba)
+        ballTranslateY.value = -25;
+        ballScale.value = 0.7;
+        ballOpacity.value = 0.2;
+        ballRotation.value = -10;
+        
+        // FASE 3: Animación de entrada de la nueva bola (fluida y con bounce)
+        ballTranslateY.value = withSpring(0, {
+          damping: 18,
+          stiffness: 280,
+          mass: 1
+        });
+        
+        ballScale.value = withSpring(1.12, {
+          damping: 15,
+          stiffness: 250
+        }, (finished) => {
+          if (finished) {
+            // FASE 4: Asentamiento final suave
+            ballScale.value = withSpring(1, {
+              damping: 25,
+              stiffness: 400
+            });
+          }
+        });
+        
+        ballOpacity.value = withTiming(1, {
+          duration: 300,
+          easing: Easing.out(Easing.ease)
+        });
+        
+        ballRotation.value = withSpring(0, {
+          damping: 20,
+          stiffness: 300
+        });
       }
     });
-
-    // Animación del historial - independiente
-    historyOpacity.value = withSequence(
-      withTiming(0.3, { duration: 200 }),
-      withTiming(1, { duration: 300 })
-    );
-  }, [ballScale, ballRotation, ballTranslateY, historyOpacity]);
-
-  const animateNewBall = useCallback((shouldSkip = false) => {
-    if (shouldSkip) return;
     
-    // Ejecutar animaciones en el hilo UI
+    // Efecto sutil en historial sincronizado
+    historyOpacity.value = withTiming(0.7, { 
+      duration: 100 
+    }, () => {
+      historyOpacity.value = withTiming(1, { 
+        duration: 200 
+      });
+    });
+  }, [ballScale, ballOpacity, ballTranslateY, ballRotation, historyOpacity]);
+
+  // Función principal con debounce para evitar múltiples llamadas
+  const animateBall = useCallback(() => {
+    // Evitar múltiples animaciones simultáneas
+    if (isAnimatingRef.current) return;
+    
+    // Limpiar timeout anterior si existe
+    if (animationTimeoutRef.current) {
+      clearTimeout(animationTimeoutRef.current);
+    }
+    
+    isAnimatingRef.current = true;
+    
+    // Ejecutar animación
     runOnUI(animateBallWorklet)();
+    
+    // Reset del flag después de la animación completa
+    animationTimeoutRef.current = setTimeout(() => {
+      isAnimatingRef.current = false;
+    }, 800); // Tiempo total de la animación (salida + entrada)
   }, [animateBallWorklet]);
 
-  const stopAnimations = useCallback(() => {
-    // Ejecutar cancelaciones en el hilo UI
-    runOnUI(() => {
-      'worklet';
-      cancelAnimation(ballScale);
-      cancelAnimation(ballRotation);
-      cancelAnimation(ballTranslateY);
-      cancelAnimation(historyOpacity);
-    })();
-  }, [ballScale, ballRotation, ballTranslateY, historyOpacity]);
-
-  // Estilos animados - se calculan en el hilo UI
+  // Estilos animados con todas las transformaciones para transición fluida
   const ballAnimatedStyle = useAnimatedStyle(() => {
     return {
       transform: [
         { translateY: ballTranslateY.value },
         { scale: ballScale.value },
         { rotate: `${ballRotation.value}deg` }
-      ]
+      ],
+      opacity: ballOpacity.value
     };
-  });
+  }, [ballScale, ballOpacity, ballTranslateY, ballRotation]);
 
   const historyAnimatedStyle = useAnimatedStyle(() => {
     return {
       opacity: historyOpacity.value
     };
-  });
+  }, [historyOpacity]);
 
-  // Efecto de limpieza al desmontar
+  // Cleanup al desmontar
   useEffect(() => {
     return () => {
-      stopAnimations();
+      // Limpiar timeout
+      if (animationTimeoutRef.current) {
+        clearTimeout(animationTimeoutRef.current);
+      }
+      
+      // Cancelar animaciones
+      cancelAnimation(ballScale);
+      cancelAnimation(ballOpacity);
+      cancelAnimation(ballTranslateY);
+      cancelAnimation(ballRotation);
+      cancelAnimation(historyOpacity);
+      
+      // Reset del flag
+      isAnimatingRef.current = false;
     };
-  }, [stopAnimations]);
+  }, [ballScale, ballOpacity, historyOpacity]);
 
   return {
+    animateBall,
     ballAnimatedStyle,
-    historyAnimatedStyle,
-    animateNewBall,
-    stopAnimations
+    historyAnimatedStyle
   };
 }
