@@ -300,6 +300,7 @@ export default function Profile() {
   };
 
   const onFetchUpdateAsync = async () => {
+    console.log('[Profile] onFetchUpdateAsync ejecutado');
     try {
       const update = await Updates.checkForUpdateAsync();
       if (update.isAvailable) {
@@ -311,16 +312,23 @@ export default function Profile() {
             {
               text: 'Actualizar',
               onPress: async () => {
-                await Updates.fetchUpdateAsync();
-                await Updates.reloadAsync();
+                try {
+                  await Updates.fetchUpdateAsync();
+                  await Updates.reloadAsync();
+                } catch (e) {
+                  console.log('Error en fetch/reload update:', e);
+                  Alert.alert('Error', 'No se pudo aplicar la actualización: ' + (e?.message || e));
+                }
               }
             }
           ]
         );
+      } else {
+        Alert.alert('Actualización', 'No hay actualización disponible.');
       }
     } catch (error) {
       console.log(`Error fetching update: ${error}`);
-      Alert.alert('Error', 'No se pudo descargar la actualización');
+      Alert.alert('Error', 'No se pudo descargar la actualización: ' + (error?.message || error));
     }
   };
 
