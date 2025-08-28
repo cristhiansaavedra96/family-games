@@ -1,16 +1,16 @@
 // Utilidad para color de columna y bola según número
-export function getBingoColorByIndexOrNumber(idxOrNum) {
+export function getBingoColorByIndexOrNumber(num, idx) {
   // Si es índice de columna (0-4)
-  if (typeof idxOrNum === 'number' && idxOrNum >= 0 && idxOrNum <= 4) {
-    return ['#e74c3c','#f1c40f','#27ae60','#9b59b6','#259cebff'][idxOrNum];
+  if (typeof idx === 'number' && idx >= 0 && idx <= 4) {
+    return ['#e74c3c','#f1c40f','#27ae60','#9b59b6','#259cebff'][idx];
   }
   // Si es número de bola
-  if (typeof idxOrNum === 'number') {
-    if (idxOrNum >= 1 && idxOrNum <= 15) return '#e74c3c'; // rojo
-    if (idxOrNum >= 16 && idxOrNum <= 30) return '#f1c40f'; // amarillo
-    if (idxOrNum >= 31 && idxOrNum <= 45) return '#27ae60'; // verde
-    if (idxOrNum >= 46 && idxOrNum <= 60) return '#9b59b6'; // purpura
-    if (idxOrNum >= 61 && idxOrNum <= 75) return '#259cebff'; // celeste oscuro
+  if (typeof num === 'number') {
+    if (num >= 1 && num <= 15) return '#e74c3c'; // rojo
+    if (num >= 16 && num <= 30) return '#f1c40f'; // amarillo
+    if (num >= 31 && num <= 45) return '#27ae60'; // verde
+    if (num >= 46 && num <= 60) return '#9b59b6'; // purpura
+    if (num >= 61 && num <= 75) return '#259cebff'; // celeste oscuro
   }
   return '#bdc3c7';
 }
@@ -111,7 +111,7 @@ function BingoCardBase({ card, drawn, marked, onToggle, compact, cellAspect, siz
               flex: 1,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: getBingoColorByIndexOrNumber(i),
+              backgroundColor: getBingoColorByIndexOrNumber(null, i),
               borderTopLeftRadius: i === 0 ? sizes.borderRadius : 0,
               borderTopRightRadius: i === 4 ? sizes.borderRadius : 0,
               minHeight: sizes.cellFontSize * 1.2,

@@ -59,6 +59,19 @@ export default function Game() {
   const [currentMessage, setCurrentMessage] = useState(null); // deprecated, mantenido temporalmente
   const [toastMessages, setToastMessages] = useState([]);
   const [showSpeedSelect, setShowSpeedSelect] = useState(false);
+  
+  // Logging consolidado de todos los estados de modales
+  useEffect(() => {
+    console.log(`[BingoGame] Estados de modales:`, {
+      showGameSummary,
+      showExit,
+      showNumbers,
+      showSpeedSelect,
+      announce: !!announce,
+      timestamp: new Date().toISOString()
+    });
+  }, [showGameSummary, showExit, showNumbers, showSpeedSelect, announce]);
+
   const {
     startBackground,
     stopBackground,
@@ -140,7 +153,7 @@ export default function Game() {
   socket.on('gameOver', (payload) => {
       // En lugar de ir a summary, mostrar modal de resumen
       setGameSummaryData(payload);
-      setShowGameSummary(true);
+      handleShowModal('gameresumen');
       // Si yo gané full, reproducir win
       try {
         const myId = me;
@@ -304,11 +317,11 @@ export default function Game() {
     const sub = navigation.addListener('beforeRemove', (e) => {
       if (allowExitRef.current) return; // permitir salida real
       e.preventDefault();
-      setShowExit(true);
+      handleShowModal('exit');
     });
     const onBack = () => {
       if (allowExitRef.current) return false; // permitir back real
-      setShowExit(true);
+      handleShowModal('exit');
       return true;
     };
   const backSub = BackHandler.addEventListener('hardwareBackPress', onBack);
@@ -317,6 +330,45 @@ export default function Game() {
     backSub?.remove && backSub.remove(); 
   };
   }, [navigation]);
+
+  // Funciones helper para manejar modales de forma segura
+  const handleShowModal = useCallback((modalName) => {
+    console.log(`[BingoGame] Mostrando modal: ${modalName}`);
+    
+    switch (modalName) {
+      case 'gameresumen':
+        setShowGameSummary(true);
+        break;
+      case 'exit':
+        setShowExit(true);
+        break;
+      case 'numbers':
+        setShowNumbers(true);
+        break;
+      case 'speed':
+        setShowSpeedSelect(true);
+        break;
+    }
+  }, []);
+
+  const handleHideModal = useCallback((modalName) => {
+    console.log(`[BingoGame] Ocultando modal: ${modalName}`);
+    
+    switch (modalName) {
+      case 'gameresumen':
+        setShowGameSummary(false);
+        break;
+      case 'exit':
+        setShowExit(false);
+        break;
+      case 'numbers':
+        setShowNumbers(false);
+        break;
+      case 'speed':
+        setShowSpeedSelect(false);
+        break;
+    }
+  }, []);
 
   // Las animaciones se limpian automáticamente en el hook useBingoAnimations
 
@@ -596,12 +648,12 @@ export default function Game() {
           {/* Grupo izquierdo: Home + Velocidad */}
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             {/* Home */}
-            <TouchableOpacity onPress={() => setShowExit(true)} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor:'#fff', alignItems:'center', justifyContent:'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
+            <TouchableOpacity onPress={() => handleShowModal('exit')} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor:'#fff', alignItems:'center', justifyContent:'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
               <Ionicons name="home" size={24} color="#2c3e50" />
             </TouchableOpacity>
             {/* Velocidad (host editable, otros lectura) */}
             {state.hostId === me ? (
-              <TouchableOpacity onPress={() => setShowSpeedSelect(true)} style={{ marginLeft: 8, height: 40, borderRadius: 20, backgroundColor: '#fff', alignItems:'center', justifyContent:'center', paddingHorizontal: 16, flexDirection:'row', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
+              <TouchableOpacity onPress={() => handleShowModal('speed')} style={{ marginLeft: 8, height: 40, borderRadius: 20, backgroundColor: '#fff', alignItems:'center', justifyContent:'center', paddingHorizontal: 16, flexDirection:'row', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
                 <MaterialCommunityIcons name="fast-forward" size={18} color="#2c3e50" />
                 <Text style={{ marginLeft: 8, fontWeight:'700', color:'#2c3e50', fontSize: 14, fontFamily: 'Montserrat_700Bold' }}>{(state.speed||1)}x</Text>
               </TouchableOpacity>
@@ -635,26 +687,81 @@ export default function Game() {
 
         {/* bola central animada simple y efectiva */}
         <Bingo.SimpleBingoBall 
-        key='bingoBall'
+          key='bingoBall'
           style={{ marginTop: 0, marginBottom: 2 }}
         />
 
-        {/* últimas bolillas animadas + botón Lista a la derecha */}
-        <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginTop: 12, paddingHorizontal: 16 }}>
+        {/* últimas bolillas animadas + botón Lista como 5ta bolilla */}
+        <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'center', marginTop: 12, paddingHorizontal: 16 }}>
+          {/* Contenedor con fondo para las últimas 4 bolillas + botón lista */}
           <View style={{
-              flexDirection:'row', 
-              alignItems:'center'
-            }}>
-            {state.drawn.slice(-4).reverse().map((n, i) => (
-              <View key={`${n}-${i}`} style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: getBingoColorByIndexOrNumber(n), alignItems: 'center', justifyContent: 'center', marginRight: 8, borderWidth: 2, borderColor: '#fff' }}>
-                <Text style={{ color: '#fff', fontSize: 20, fontFamily: 'Mukta_700Bold', lineHeight: 16, includeFontPadding: false, textAlignVertical: 'center' }}>{n}</Text>
-              </View>
-            ))}
+            flexDirection:'row', 
+            alignItems:'center',
+            backgroundColor: 'rgba(255, 255, 255, 0.15)',
+            borderRadius: 20,
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            minWidth: 220, // Ancho fijo para 4 bolillas + lista
+            justifyContent: 'flex-start'
+          }}>
+            {/* Renderizar siempre 4 espacios, llenando desde la izquierda con reverse */}
+            {Array.from({ length: 4 }, (_, index) => {
+              // Reverse: la última cantada aparece primera (index 0)
+              const drawnIndex = state.drawn.length - 1 - index;
+              const number = drawnIndex >= 0 ? state.drawn[drawnIndex] : null;
+              
+              return (
+                <View 
+                  key={`slot-${index}`} 
+                  style={{ 
+                    width: 34, 
+                    height: 34, 
+                    borderRadius: 17, 
+                    backgroundColor: number ? getBingoColorByIndexOrNumber(number) : 'rgba(255, 255, 255, 0.2)', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    marginRight: 8,
+                    borderWidth: 2, 
+                    borderColor: number ? '#fff' : 'rgba(255, 255, 255, 0.3)'
+                  }}
+                >
+                  {number && (
+                    <Text style={{ 
+                      color: '#fff', 
+                      fontSize: 20, 
+                      fontFamily: 'Mukta_700Bold', 
+                      lineHeight: 16, 
+                      includeFontPadding: false, 
+                      textAlignVertical: 'center' 
+                    }}>
+                      {number}
+                    </Text>
+                  )}
+                </View>
+              );
+            })}
+            
+            {/* Botón Lista como 5ta bolilla */}
+            <TouchableOpacity 
+              onPress={() => handleShowModal('numbers')} 
+              style={{ 
+                width: 34, 
+                height: 34, 
+                borderRadius: 17, 
+                backgroundColor: '#fff', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                borderWidth: 2,
+                borderColor: '#6d7b88ff',
+                shadowOpacity: 0.1, 
+                shadowRadius: 4, 
+                shadowOffset: { width: 0, height: 2 }, 
+                elevation: 3
+              }}
+            >
+              <Ionicons name="list" size={18} color="#2c3e50" />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={() => setShowNumbers(true)} style={{ height: 36, borderRadius: 18, backgroundColor: '#fff', alignItems:'center', justifyContent:'center', paddingHorizontal: 12, flexDirection:'row', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}>
-            <Ionicons name="list" size={18} color="#2c3e50" />
-            <Text style={{ marginLeft: 8, fontWeight:'700', color:'#2c3e50', fontSize: 12, fontFamily: 'Montserrat_700Bold' }}>Lista</Text>
-          </TouchableOpacity>
         </View>
       </View>
     </View>
@@ -841,24 +948,77 @@ export default function Game() {
         </TouchableOpacity>
       </View>
 
+      {/* === SECCIÓN DE MODALES === */}
+      {/* Solo se renderizan cuando su estado visible es true */}
+      
       {/* Modal de Resumen de Juego */}
-      <GameSummaryModal
-        visible={showGameSummary}
-        players={state.players}
-        figuresClaimed={state.figuresClaimed}
-        playersReady={playersReady}
-        me={me}
-        onClose={() => {
-          setShowGameSummary(false);
-          router.replace('/gameSelect');
-        }}
-        onPlayAgain={() => {
-          // Marcar jugador como listo para nueva partida
-          setPlayersReady(prev => ({ ...prev, [me]: true }));
-          // Enviar al servidor que está listo
-          socket.emit('readyForNewGame', { roomId: state.roomId || params.roomId });
-        }}
-      />
+      {showGameSummary && (
+        <GameSummaryModal
+          visible={showGameSummary}
+          players={state.players}
+          figuresClaimed={state.figuresClaimed}
+          playersReady={playersReady}
+          me={me}
+          onClose={() => {
+            handleHideModal('gameresumen');
+            router.replace('/gameSelect');
+          }}
+          onPlayAgain={() => {
+            // Marcar jugador como listo para nueva partida
+            setPlayersReady(prev => ({ ...prev, [me]: true }));
+            // Enviar al servidor que está listo
+            socket.emit('readyForNewGame', { roomId: state.roomId || params.roomId });
+          }}
+        />
+      )}
+
+      {/* Modal de Salir */}
+      {showExit && (
+        <ExitModal
+          visible={showExit}
+          onClose={() => handleHideModal('exit')}
+          onConfirm={() => {
+            allowExitRef.current = true;
+            socket.emit('leaveRoom');
+            clearBalls(); // Limpiar bolas al salir
+            handleHideModal('exit');
+            router.replace('/gameSelect');
+          }}
+        />
+      )}
+
+      {/* Modal de Números Cantados */}
+      {showNumbers && (
+        <NumbersModal
+          visible={showNumbers}
+          drawnNumbers={state.drawn}
+          onClose={() => handleHideModal('numbers')}
+        />
+      )}
+
+      {/* Modal de Selección de Velocidad */}
+      {showSpeedSelect && (
+        <SpeedSelectModal
+          visible={showSpeedSelect}
+          currentSpeed={state.speed}
+          onSpeedChange={(speed) => {
+            if (speed !== state.speed) {
+              socket.emit('setSpeed', { roomId: state.roomId || params.roomId, speed });
+            }
+          }}
+          onClose={() => handleHideModal('speed')}
+        />
+      )}
+
+      {/* Modal de Anuncios */}
+      {announce && (
+        <AnnouncementModal
+          visible={!!announce}
+          announce={announce}
+          getAvatarUrl={getAvatarUrl}
+          onClose={() => setAnnounce(null)}
+        />
+      )}
 
       {/* Overlay de anuncio mejorado */}
       <AnnouncementModal
@@ -902,37 +1062,7 @@ export default function Game() {
           );
         })}
       </View>
-      {/* Modal salir mejorado */}
-      {!showGameSummary &&
-        <ExitModal
-          visible={showExit}
-          onClose={() => setShowExit(false)}
-          onConfirm={() => {
-            allowExitRef.current = true;
-            socket.emit('leaveRoom');
-            setShowExit(false);
-            router.replace('/gameSelect');
-          }}
-        />
-      }
-      {/* Modal listado de números mejorado con bolillas */}
-      <NumbersModal
-        visible={showNumbers}
-        drawnNumbers={state.drawn}
-        onClose={() => setShowNumbers(false)}
-      />
-
-      {/* Modal para seleccionar velocidad */}
-      <SpeedSelectModal
-        visible={showSpeedSelect}
-        currentSpeed={state.speed}
-        onSpeedChange={(speed) => {
-          if (speed !== state.speed) {
-            socket.emit('setSpeed', { roomId: state.roomId || params.roomId, speed });
-          }
-        }}
-        onClose={() => setShowSpeedSelect(false)}
-      />
+      {/* === FIN SECCIÓN DE MODALES === */}
 
       {/* Chat Toasts apilados a la derecha */}
       <ChatToasts messages={toastMessages} onItemComplete={handleToastComplete} />

@@ -43,27 +43,25 @@ export function useBingoSound() {
       if (typeof bg.setLooping === 'function') bg.setLooping(true);
       if (typeof bg.setIsLooping === 'function') bg.setIsLooping(true);
       console.log(bg.loop);
-
-      // Refuerzo: listener para reiniciar manualmente si termina
-      if (typeof bg.addEventListener === 'function') {
-        const onEnd = () => {
-          if (!musicMuted && assetsReady) {
-            try {
-              if (typeof bg.seekTo === 'function') bg.seekTo(0);
-              if (typeof bg.play === 'function') bg.play();
-            } catch (e) {
-              console.warn('[useBingoSound] Loop manual failed', e);
-            }
-          }
-        };
-        bg.addEventListener('ended', onEnd);
-        return () => {
-          bg.removeEventListener('ended', onEnd);
-        };
-      }
     } catch (error) {
       console.warn('Error configurando background:', error);
     }
+
+    // Intervalo para verificar si la música sigue sonando
+    const interval = setInterval(() => {
+      try {
+        if (!assetsReady || !bg || musicMuted) return;
+        // Si está pausado o no está reproduciendo, intentar reiniciar
+        // Chequeos típicos: paused, isPlaying, etc.
+        if ((bg.paused === true) || (bg.isPlaying === false) || (typeof bg.getStatusAsync === 'function' && bg.getStatusAsync().then?.(s => !s.isPlaying))) {
+          if (typeof bg.seekTo === 'function') bg.seekTo(0);
+          if (typeof bg.play === 'function') bg.play();
+        }
+      } catch (e) {
+        // Silenciar errores
+      }
+    }, 5000);
+    return () => clearInterval(interval);
   }, [bg, assetsReady, musicMuted]);
 
   const startBackground = useCallback(() => {
@@ -167,7 +165,7 @@ export function useBingoSound() {
           const p = sSelect.play?.();
           if (p && typeof p.then === "function") {
             p.catch(() => {
-              setTimeout(() => sSelect.play?.(), 50); // reintento rápido
+              setTimeout(() => sSelect.play?.(), 200); // reintento rápido
             });
           }
         } catch (e) {
