@@ -25,6 +25,7 @@
     },
     "android": {
       "package": "com.familygames.app",
+      "usesCleartextTraffic": true,
       "versionCode": 1,
       "permissions": [],
       "adaptiveIcon": {
@@ -37,7 +38,7 @@
       "favicon": "./assets/icon.png"
     },
     "extra": {
-      "EXPO_PUBLIC_API_URL": "https://family-games-backend-production.up.railway.app",
+      "EXPO_PUBLIC_API_URL": "http://family-games-backend-umfoty-50eb7d-216-238-99-186.traefik.me",
       "router": {},
       "eas": {
         "projectId": "d443c4ff-0a55-4aba-acf5-9fdd6bbc5034"
@@ -46,7 +47,8 @@
     "plugins": [
       "expo-router",
       "expo-font",
-      "expo-updates"
+      "expo-updates",
+      "expo-build-properties"
     ],
     "runtimeVersion": {
       "policy": "appVersion"
