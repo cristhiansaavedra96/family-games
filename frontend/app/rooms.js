@@ -172,7 +172,10 @@ export default function Rooms() {
       const name = await AsyncStorage.getItem("profile:name");
       const username = await getUsername();
       // No enviar avatar - el servidor lo obtiene de la BD
-      socket.emit("createRoom", { player: { name, username } });
+      socket.emit("createRoom", {
+        player: { name, username },
+        gameKey: "bingo",
+      });
 
       socket.once("joined", ({ roomId }) => {
         setIsCreatingRoom(false);

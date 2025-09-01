@@ -2,7 +2,7 @@ import { io } from "socket.io-client";
 import Constants from "expo-constants";
 
 const URL =
-  //  "192.168.0.10:4000" ||
+  "192.168.0.10:4000" ||
   "https://familygames.duckdns.org" ||
   Constants.expoConfig?.extra?.EXPO_PUBLIC_API_URL ||
   "https://family-games-backend-production.up.railway.app";

@@ -110,7 +110,7 @@ export default function Waiting() {
     if (changingCards) return;
     setChangingCards(true);
     setState((prev) => ({ ...prev, cardsPerPlayer: n }));
-    socket.emit("configure", { roomId, cardsPerPlayer: n });
+    socket.emit("configure", { roomId, config: { cardsPerPlayer: n } });
   };
 
   // Ordenar jugadores con el anfitrión primero
