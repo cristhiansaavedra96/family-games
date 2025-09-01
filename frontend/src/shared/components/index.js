@@ -5,7 +5,7 @@
 export * from "./chat";
 
 // UI components (botones, modales, etc.)
-// export * from "./ui"; // TODO: Crear cuando sea necesario
+export * from "./ui"; // ✅ Componentes UI básicos disponibles
 
 // Avatar system
 // export * from "./avatar"; // TODO: Crear cuando sea necesario

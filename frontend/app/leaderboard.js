@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, Image, FlatList, TouchableOpacity } from "react-native";
+import { View, Text, Image, FlatList } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useLocalSearchParams, router } from "expo-router";
+import { Button } from "../src/shared/components/ui";
 import { useSocket } from "../src/shared/hooks";
 
 export default function Leaderboard() {
@@ -231,22 +232,23 @@ export default function Leaderboard() {
                 alignItems: "center",
               }}
             >
-              <TouchableOpacity
+              <Button
                 onPress={() => router.back()}
+                variant="ghost"
+                size="small"
+                icon={<Ionicons name="arrow-back" size={20} color="white" />}
                 style={{
                   width: 40,
                   height: 40,
                   borderRadius: 20,
                   backgroundColor: "rgba(255,255,255,0.2)",
-                  alignItems: "center",
-                  justifyContent: "center",
                   marginRight: 12,
                   borderWidth: 1,
                   borderColor: "rgba(255,255,255,0.3)",
+                  paddingVertical: 0,
+                  paddingHorizontal: 0,
                 }}
-              >
-                <Ionicons name="arrow-back" size={20} color="white" />
-              </TouchableOpacity>
+              />
               <Text
                 style={{
                   color: "#fff",

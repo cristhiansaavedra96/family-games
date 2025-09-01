@@ -1,9 +1,10 @@
 import { useEffect, useState, useMemo } from "react";
-import { View, Text, TouchableOpacity, FlatList, Image } from "react-native";
+import { View, Text, FlatList, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSocket } from "../src/shared/hooks";
+import { Button } from "../src/shared/components/ui";
 
 const labels = {
   corners: "Esquinas",
@@ -160,52 +161,30 @@ export default function Summary() {
         </View>
 
         <View style={{ flexDirection: "row", marginTop: 8 }}>
-          <TouchableOpacity
+          <Button
+            title="Salir"
             onPress={() => {
               socket.emit("leaveRoom");
               router.replace("/rooms");
             }}
-            style={{
-              flex: 1,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 14,
-              borderRadius: 14,
-              backgroundColor: "#ecf0f1",
-              marginRight: 8,
-            }}
-          >
-            <Ionicons name="exit-outline" size={18} color="#7f8c8d" />
-            <Text
-              style={{ color: "#7f8c8d", fontWeight: "700", marginLeft: 8 }}
-            >
-              Salir
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
+            variant="ghost"
+            size="medium"
+            icon={<Ionicons name="exit-outline" size={18} color="#7f8c8d" />}
+            style={{ flex: 1, marginRight: 8 }}
+          />
+          <Button
+            title="Jugar nuevamente"
             onPress={playAgain}
+            variant="primary"
+            size="medium"
+            icon={<Ionicons name="refresh" size={18} color="#fff" />}
             style={{
               flex: 1,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 14,
-              borderRadius: 14,
-              backgroundColor: "#27ae60",
               marginLeft: 8,
+              backgroundColor: "#27ae60",
               shadowColor: "#27ae60",
-              shadowOpacity: 0.25,
-              shadowRadius: 8,
-              shadowOffset: { width: 0, height: 4 },
-              elevation: 7,
             }}
-          >
-            <Ionicons name="refresh" size={18} color="#fff" />
-            <Text style={{ color: "white", fontWeight: "800", marginLeft: 8 }}>
-              Jugar nuevamente
-            </Text>
-          </TouchableOpacity>
+          />
         </View>
       </View>
     </SafeAreaView>

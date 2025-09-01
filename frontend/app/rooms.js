@@ -1,14 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  Image,
-  Alert,
-  ScrollView,
-  ActivityIndicator,
-} from "react-native";
+import { View, FlatList, TouchableOpacity, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
@@ -17,6 +8,12 @@ import { getUsername } from "../src/shared/utils";
 import * as FileSystem from "expo-file-system";
 
 import { useAvatarSync, useSocket, useStorage } from "../src/shared/hooks";
+import {
+  Button,
+  Typography,
+  Card,
+  LoadingSpinner,
+} from "../src/shared/components/ui";
 import {
   logAvatarCacheStatus,
   cleanOldCache,
@@ -227,246 +224,271 @@ export default function Rooms() {
     }
 
     return (
-      <TouchableOpacity
+      <Card
         onPress={() => openRoom(item.id, isReconnect)}
+        disabled={!canJoin || isJoining}
+        variant="elevated"
+        padding="medium"
         style={{
-          backgroundColor: "#fff",
-          borderRadius: 16,
           marginBottom: 12,
-          shadowColor: "#000",
-          shadowOpacity: 0.08,
-          shadowRadius: 12,
-          shadowOffset: { width: 0, height: 4 },
-          elevation: 6,
           borderLeftWidth: 4,
           borderLeftColor: statusColor,
           opacity: !canJoin || isJoining ? 0.7 : 1,
         }}
-        disabled={!canJoin || isJoining}
-        activeOpacity={0.7}
       >
-        <View style={{ padding: 16 }}>
-          {/* Header de la sala */}
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 12,
-            }}
-          >
-            <View style={{ flex: 1 }}>
-              <View
+        {/* Header de la sala */}
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "flex-start", // Cambiar a flex-start para mejor alineación
+            marginBottom: 12,
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginBottom: 4,
+              }}
+            >
+              <Typography
+                variant="heading3"
                 style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  marginBottom: 4,
+                  color: "#2c3e50",
+                  marginRight: 8,
                 }}
               >
-                <Text
+                Sala {item.id}
+              </Typography>
+              {/* Badge de estado mejorado */}
+              <View
+                style={{
+                  backgroundColor: statusColor,
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  borderRadius: 10,
+                }}
+              >
+                <Typography
+                  variant="small"
                   style={{
-                    fontSize: 18,
-                    fontWeight: "700",
-                    color: "#2c3e50",
-                    marginRight: 8,
+                    color: "white",
+                    fontWeight: "600",
+                    textTransform: "uppercase",
                   }}
                 >
-                  Sala {item.id}
-                </Text>
-                {/* Badge de estado mejorado */}
+                  {statusText}
+                </Typography>
+              </View>
+              {/* Badge adicional si estoy en la sala */}
+              {amInThisRoom && (
                 <View
                   style={{
-                    backgroundColor: statusColor,
-                    paddingHorizontal: 8,
-                    paddingVertical: 3,
-                    borderRadius: 10,
+                    backgroundColor: "#27ae60",
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                    borderRadius: 8,
+                    marginLeft: 6,
                   }}
                 >
-                  <Text
+                  <Typography
+                    variant="small"
                     style={{
                       color: "white",
-                      fontSize: 11,
                       fontWeight: "600",
-                      textTransform: "uppercase",
                     }}
                   >
-                    {statusText}
-                  </Text>
+                    TÚ
+                  </Typography>
                 </View>
-                {/* Badge adicional si estoy en la sala */}
-                {amInThisRoom && (
-                  <View
-                    style={{
-                      backgroundColor: "#27ae60",
-                      paddingHorizontal: 6,
-                      paddingVertical: 2,
-                      borderRadius: 8,
-                      marginLeft: 6,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: "white",
-                        fontSize: 10,
-                        fontWeight: "600",
-                      }}
-                    >
-                      TÚ
-                    </Text>
-                  </View>
-                )}
-              </View>
+              )}
+            </View>
 
-              {/* Contador de jugadores y cartones */}
+            {/* Contador de jugadores y cartones */}
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
               <View
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  flexWrap: "wrap",
+                  marginRight: 12,
                 }}
               >
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    marginRight: 12,
-                  }}
+                <Ionicons name="people" size={16} color="#7f8c8d" />
+                <Typography
+                  variant="small"
+                  style={{ color: "#7f8c8d", marginLeft: 4 }}
                 >
-                  <Ionicons name="people" size={16} color="#7f8c8d" />
-                  <Text
-                    style={{ color: "#7f8c8d", fontSize: 14, marginLeft: 4 }}
-                  >
-                    {playerCount}/{maxPlayers} jugadores
-                  </Text>
-                </View>
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <Ionicons name="grid-outline" size={16} color="#7f8c8d" />
-                  <Text
-                    style={{ color: "#7f8c8d", fontSize: 14, marginLeft: 4 }}
-                  >
-                    {cardsPerPlayer}{" "}
-                    {cardsPerPlayer === 1 ? "cartón" : "cartones"} por jugador
-                  </Text>
-                </View>
+                  {playerCount}/{maxPlayers} jugadores
+                </Typography>
               </View>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Ionicons name="grid-outline" size={16} color="#7f8c8d" />
+                <Typography
+                  variant="small"
+                  style={{ color: "#7f8c8d", marginLeft: 4 }}
+                >
+                  {cardsPerPlayer}{" "}
+                  {cardsPerPlayer === 1 ? "cartón" : "cartones"} por jugador
+                </Typography>
+              </View>
+            </View>
 
-              {/* Mensaje adicional para reconexión */}
-              {isReconnect && (
-                <View
+            {/* Mensaje adicional para reconexión */}
+            {isReconnect && (
+              <View
+                style={{
+                  backgroundColor: "#e8f4f8",
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                  borderRadius: 8,
+                  marginTop: 8,
+                }}
+              >
+                <Typography
+                  variant="caption"
                   style={{
-                    backgroundColor: "#e8f4f8",
-                    paddingHorizontal: 8,
-                    paddingVertical: 4,
-                    borderRadius: 8,
-                    marginTop: 8,
+                    color: "#2980b9",
+                    fontWeight: "600",
+                    textAlign: "center",
                   }}
                 >
-                  <Text
-                    style={{
-                      color: "#2980b9",
-                      fontSize: 12,
-                      fontWeight: "600",
-                      textAlign: "center",
-                    }}
-                  >
-                    🎮 Puedes volver a tu partida en progreso
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            {/* Icono de acción mejorado */}
-            <View style={{ alignItems: "center" }}>
-              {isJoining ? (
-                <ActivityIndicator size={24} color="#f39c12" />
-              ) : (
-                <Ionicons name={iconName} size={24} color={statusColor} />
-              )}
-            </View>
+                  🎮 Puedes volver a tu partida en progreso
+                </Typography>
+              </View>
+            )}
           </View>
 
-          {/* Avatares de jugadores */}
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            {item.players.slice(0, 5).map((p, index) => {
-              const isMe = p.username === myUsername;
-              const avatarUrl = getAvatarUrl(p.username);
-              // Si no está en caché, dispara la descarga en background
-              if (!avatarUrl && p.avatarId) {
-                syncAvatar(p.username, p.avatarId);
-              }
-              return avatarUrl ? (
-                <Image
-                  key={p.id}
-                  source={{ uri: avatarUrl }}
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 22,
-                    marginRight: 10,
-                    borderWidth: isMe ? 3 : 2,
-                    borderColor: isMe ? "#3498db" : "#fff",
-                    shadowColor: "#000",
-                    shadowOpacity: 0.1,
-                    shadowRadius: 2,
-                    elevation: 2,
-                  }}
-                />
-              ) : (
-                <View
-                  key={p.id}
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 22,
-                    marginRight: 10,
-                    backgroundColor: isMe ? "#3498db" : "#f0f0f0",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    borderWidth: isMe ? 3 : 2,
-                    borderColor: isMe ? "#2980b9" : "#fff",
-                    shadowColor: "#000",
-                    shadowOpacity: 0.1,
-                    shadowRadius: 2,
-                    elevation: 2,
-                  }}
-                >
-                  <Text
-                    style={{ fontSize: 12, color: isMe ? "white" : "#666" }}
-                  >
-                    👤
-                  </Text>
-                </View>
-              );
-            })}
-            {item.players.length > 5 && (
-              <View
+          {/* Icono de acción mejorado */}
+          <View
+            style={{
+              alignItems: "center",
+              justifyContent: "center",
+              width: 24,
+              height: 24,
+              marginTop: 8, // Alinear con la línea del título
+            }}
+          >
+            {isJoining ? (
+              <LoadingSpinner
+                variant="inline"
+                size="small"
+                color="#f39c12"
+                message=""
+                style={{
+                  width: 24,
+                  height: 24,
+                  margin: 0,
+                  padding: 0,
+                }}
+              />
+            ) : (
+              <Ionicons
+                name={iconName}
+                size={24}
+                color={statusColor}
+                style={{
+                  width: 24,
+                  height: 24,
+                  textAlign: "center",
+                  textAlignVertical: "center",
+                }}
+              />
+            )}
+          </View>
+        </View>
+
+        {/* Avatares de jugadores */}
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          {item.players.slice(0, 5).map((p, index) => {
+            const isMe = p.username === myUsername;
+            const avatarUrl = getAvatarUrl(p.username);
+            // Si no está en caché, dispara la descarga en background
+            if (!avatarUrl && p.avatarId) {
+              syncAvatar(p.username, p.avatarId);
+            }
+            return avatarUrl ? (
+              <Image
+                key={p.id}
+                source={{ uri: avatarUrl }}
                 style={{
                   width: 44,
                   height: 44,
                   borderRadius: 22,
-                  backgroundColor: "#bdc3c7",
+                  marginRight: 10,
+                  borderWidth: isMe ? 3 : 2,
+                  borderColor: isMe ? "#3498db" : "#fff",
+                  shadowColor: "#000",
+                  shadowOpacity: 0.1,
+                  shadowRadius: 2,
+                  elevation: 2,
+                }}
+              />
+            ) : (
+              <View
+                key={p.id}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  marginRight: 10,
+                  backgroundColor: isMe ? "#3498db" : "#f0f0f0",
                   alignItems: "center",
                   justifyContent: "center",
-                  marginLeft: -6,
+                  borderWidth: isMe ? 3 : 2,
+                  borderColor: isMe ? "#2980b9" : "#fff",
+                  shadowColor: "#000",
+                  shadowOpacity: 0.1,
+                  shadowRadius: 2,
+                  elevation: 2,
                 }}
               >
-                <Text
-                  style={{ color: "white", fontSize: 10, fontWeight: "600" }}
+                <Typography
+                  variant="caption"
+                  style={{ color: isMe ? "white" : "#666" }}
                 >
-                  +{item.players.length - 5}
-                </Text>
+                  👤
+                </Typography>
               </View>
-            )}
-            {item.players.length === 0 && (
-              <Text
-                style={{ color: "#bdc3c7", fontSize: 14, fontStyle: "italic" }}
+            );
+          })}
+          {item.players.length > 5 && (
+            <View
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                backgroundColor: "#bdc3c7",
+                alignItems: "center",
+                justifyContent: "center",
+                marginLeft: -6,
+              }}
+            >
+              <Typography
+                variant="caption"
+                style={{ color: "white", fontWeight: "600" }}
               >
-                Sin jugadores
-              </Text>
-            )}
-          </View>
+                +{item.players.length - 5}
+              </Typography>
+            </View>
+          )}
+          {item.players.length === 0 && (
+            <Typography
+              variant="caption"
+              style={{ color: "#bdc3c7", fontStyle: "italic" }}
+            >
+              Sin jugadores
+            </Typography>
+          )}
         </View>
-      </TouchableOpacity>
+      </Card>
     );
   };
 
@@ -489,8 +511,11 @@ export default function Rooms() {
               }}
             >
               {/* Back button */}
-              <TouchableOpacity
+              <Button
                 onPress={() => router.push("/gameSelect")}
+                variant="ghost"
+                size="small"
+                icon={<Ionicons name="arrow-back" size={20} color="white" />}
                 style={{
                   position: "absolute",
                   top: 60,
@@ -499,65 +524,55 @@ export default function Rooms() {
                   height: 40,
                   borderRadius: 20,
                   backgroundColor: "rgba(255,255,255,0.2)",
-                  alignItems: "center",
-                  justifyContent: "center",
                   borderWidth: 1,
                   borderColor: "rgba(255,255,255,0.3)",
+                  paddingVertical: 0,
+                  paddingHorizontal: 0,
                 }}
-              >
-                <Ionicons name="arrow-back" size={20} color="white" />
-              </TouchableOpacity>
+              />
 
               <View style={{ alignItems: "center" }}>
-                <Text
+                <Typography
+                  variant="heading1"
                   style={{
-                    fontSize: 28,
-                    fontWeight: "700",
                     color: "white",
                     marginBottom: 10,
-                    fontFamily: "Montserrat_700Bold",
                   }}
                 >
                   Salas de Bingo
-                </Text>
-                <Text
+                </Typography>
+                <Typography
+                  variant="body"
                   style={{
-                    fontSize: 16,
                     color: "rgba(255,255,255,0.8)",
                     textAlign: "center",
-                    fontFamily: "Montserrat_400Regular",
                   }}
                 >
                   Únete a una sala o crea la tuya
-                </Text>
+                </Typography>
                 {/* Botón ranking en header */}
-                <TouchableOpacity
+                <Button
+                  title="Ver Ranking"
                   onPress={() =>
                     router.push({
                       pathname: "/leaderboard",
                       params: { gameKey: "bingo" },
                     })
                   }
+                  variant="ghost"
+                  size="small"
+                  icon={<Ionicons name="trophy" size={16} color="#f1c40f" />}
                   style={{
                     marginTop: 12,
                     backgroundColor: "rgba(255,255,255,0.15)",
                     borderRadius: 20,
                     paddingVertical: 8,
                     paddingHorizontal: 14,
-                    flexDirection: "row",
-                    alignItems: "center",
                     borderWidth: 1,
                     borderColor: "rgba(255,255,255,0.25)",
                   }}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="trophy" size={16} color="#f1c40f" />
-                  <Text
-                    style={{ color: "white", marginLeft: 6, fontWeight: "700" }}
-                  >
-                    Ver Ranking
-                  </Text>
-                </TouchableOpacity>
+                  textStyle={{ color: "white", fontWeight: "700" }}
+                />
               </View>
             </View>
 
@@ -567,68 +582,38 @@ export default function Rooms() {
               <View style={{ padding: 16, paddingBottom: 8 }}>
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
                   {/* Create Room Button */}
-                  <TouchableOpacity
+                  <Button
+                    title={isCreatingRoom ? "Creando..." : "Crear Sala"}
                     onPress={createRoom}
                     disabled={isCreatingRoom}
+                    loading={isCreatingRoom}
+                    variant="primary"
+                    size="large"
+                    icon={
+                      !isCreatingRoom && (
+                        <Ionicons name="add-circle" size={20} color="white" />
+                      )
+                    }
                     style={{
                       flex: 1,
-                      backgroundColor: isCreatingRoom ? "#bdc3c7" : "#e74c3c",
-                      borderRadius: 12,
-                      paddingVertical: 16,
-                      alignItems: "center",
                       marginRight: 12,
-                      opacity: isCreatingRoom ? 0.7 : 1,
+                      backgroundColor: "#e74c3c",
                     }}
-                  >
-                    <View
-                      style={{ flexDirection: "row", alignItems: "center" }}
-                    >
-                      {isCreatingRoom ? (
-                        <>
-                          <ActivityIndicator size="small" color="white" />
-                          <Text
-                            style={{
-                              color: "white",
-                              fontSize: 16,
-                              fontWeight: "700",
-                              marginLeft: 6,
-                            }}
-                          >
-                            Creando...
-                          </Text>
-                        </>
-                      ) : (
-                        <>
-                          <Ionicons name="add-circle" size={20} color="white" />
-                          <Text
-                            style={{
-                              color: "white",
-                              fontSize: 16,
-                              fontWeight: "700",
-                              marginLeft: 6,
-                            }}
-                          >
-                            Crear Sala
-                          </Text>
-                        </>
-                      )}
-                    </View>
-                  </TouchableOpacity>
+                  />
 
                   {/* Refresh Button - Pequeño */}
-                  <TouchableOpacity
+                  <Button
                     onPress={refreshRooms}
+                    variant="primary"
+                    size="large"
+                    icon={<Ionicons name="refresh" size={20} color="white" />}
                     style={{
                       backgroundColor: "#3498db",
                       borderRadius: 12,
                       paddingVertical: 16,
                       paddingHorizontal: 16,
-                      alignItems: "center",
-                      justifyContent: "center",
                     }}
-                  >
-                    <Ionicons name="refresh" size={20} color="white" />
-                  </TouchableOpacity>
+                  />
                 </View>
               </View>
 
@@ -653,26 +638,26 @@ export default function Rooms() {
                     }}
                   >
                     <Ionicons name="home" size={64} color="#bdc3c7" />
-                    <Text
+                    <Typography
+                      variant="heading4"
                       style={{
-                        fontSize: 18,
                         color: "#7f8c8d",
                         marginTop: 16,
                         textAlign: "center",
                       }}
                     >
                       No hay salas disponibles
-                    </Text>
-                    <Text
+                    </Typography>
+                    <Typography
+                      variant="caption"
                       style={{
-                        fontSize: 14,
                         color: "#95a5a6",
                         marginTop: 8,
                         textAlign: "center",
                       }}
                     >
                       ¡Crea la primera sala!
-                    </Text>
+                    </Typography>
                   </View>
                 )}
               />

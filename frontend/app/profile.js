@@ -17,6 +17,7 @@ import * as FileSystem from "expo-file-system";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSocket, useStorage } from "../src/shared/hooks";
+import { Button, Typography } from "../src/shared/components/ui";
 import { getUsername } from "../src/shared/utils";
 
 export default function Profile() {
@@ -344,48 +345,32 @@ export default function Profile() {
                     : "rgba(244, 67, 54, 0.5)",
                 }}
               >
-                <View
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
-                    backgroundColor: socketConnected ? "#4CAF50" : "#F44336",
-                    marginRight: 6,
-                  }}
+                <Ionicons
+                  name={socketConnected ? "checkmark" : "close"}
+                  size={12}
+                  color="white"
                 />
-                <Text
-                  style={{
-                    fontSize: 12,
-                    color: "white",
-                    fontFamily: "Montserrat_500Medium",
-                  }}
-                >
-                  {socketConnected ? "Conectado" : "Desconectado"}
-                </Text>
               </View>
 
               <View style={{ alignItems: "center" }}>
-                <Text
+                <Typography
+                  variant="heading1"
                   style={{
-                    fontSize: 28,
-                    fontWeight: "700",
                     color: "white",
                     marginBottom: 20,
-                    fontFamily: "Montserrat_700Bold",
                   }}
                 >
                   Mi Perfil
-                </Text>
-                <Text
+                </Typography>
+                <Typography
+                  variant="body"
                   style={{
-                    fontSize: 16,
                     color: "rgba(255,255,255,0.8)",
                     textAlign: "center",
-                    fontFamily: "Montserrat_400Regular",
                   }}
                 >
                   Personaliza tu experiencia de juego
-                </Text>
+                </Typography>
               </View>
             </View>
 
@@ -430,16 +415,14 @@ export default function Profile() {
                         borderRadius: 60,
                       }}
                     >
-                      <Text
+                      <Typography
+                        variant="heading2"
                         style={{
-                          fontSize: 32,
-                          fontWeight: "700",
                           color: "white",
-                          fontFamily: "Montserrat_700Bold",
                         }}
                       >
                         {getInitials()}
-                      </Text>
+                      </Typography>
                     </View>
                   )}
 
@@ -465,16 +448,15 @@ export default function Profile() {
               </TouchableOpacity>
 
               <TouchableOpacity onPress={pickImage} style={{ marginTop: 12 }}>
-                <Text
+                <Typography
+                  variant="caption"
                   style={{
-                    fontSize: 14,
                     color: "#34495e",
                     fontWeight: "600",
-                    fontFamily: "Montserrat_600SemiBold",
                   }}
                 >
                   {avatar ? "Cambiar foto" : "Agregar foto"}
-                </Text>
+                </Typography>
               </TouchableOpacity>
             </View>
 
@@ -492,17 +474,15 @@ export default function Profile() {
                   elevation: 6,
                 }}
               >
-                <Text
+                <Typography
+                  variant="heading4"
                   style={{
-                    fontSize: 16,
-                    fontWeight: "600",
                     color: "#2c3e50",
                     marginBottom: 12,
-                    fontFamily: "Montserrat_600SemiBold",
                   }}
                 >
                   Nombre de usuario
-                </Text>
+                </Typography>
 
                 <TextInput
                   placeholder="Ingresa tu nombre"
@@ -522,85 +502,59 @@ export default function Profile() {
                   autoCapitalize="words"
                 />
 
-                <Text
+                <Typography
+                  variant="caption"
                   style={{
-                    fontSize: 12,
                     color: "#7f8c8d",
                     marginTop: 8,
-                    fontFamily: "Montserrat_400Regular",
                   }}
                 >
                   Este será tu nombre visible para otros jugadores
-                </Text>
+                </Typography>
               </View>
             </View>
 
             {/* Save Button */}
             <View style={{ paddingHorizontal: 20, marginBottom: 40 }}>
-              <TouchableOpacity
+              <Button
+                title={
+                  isLoading
+                    ? "Guardando..."
+                    : !socketConnected
+                    ? "Sin Conexión"
+                    : "Guardar Perfil"
+                }
                 onPress={saveProfile}
                 disabled={!name.trim() || isLoading || !socketConnected}
-                style={{
-                  backgroundColor:
-                    name.trim() && socketConnected ? "#34495e" : "#bdc3c7",
-                  borderRadius: 16,
-                  paddingVertical: 18,
-                  alignItems: "center",
-                  shadowColor:
-                    name.trim() && socketConnected ? "#34495e" : "transparent",
-                  shadowOpacity: 0.3,
-                  shadowRadius: 8,
-                  shadowOffset: { width: 0, height: 4 },
-                  elevation: name.trim() && socketConnected ? 8 : 0,
-                }}
-                activeOpacity={0.8}
-              >
-                {isLoading ? (
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Text
-                      style={{
-                        fontSize: 18,
-                        fontWeight: "700",
-                        color: "white",
-                        marginRight: 8,
-                        fontFamily: "Montserrat_700Bold",
-                      }}
-                    >
-                      Guardando...
-                    </Text>
-                  </View>
-                ) : !socketConnected ? (
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Ionicons name="cloud-offline" size={24} color="white" />
-                    <Text
-                      style={{
-                        fontSize: 18,
-                        fontWeight: "700",
-                        color: "white",
-                        marginLeft: 8,
-                        fontFamily: "Montserrat_700Bold",
-                      }}
-                    >
-                      Sin Conexión
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                loading={isLoading}
+                variant={
+                  !socketConnected
+                    ? "ghost"
+                    : name.trim() && socketConnected
+                    ? "primary"
+                    : "outline"
+                }
+                size="large"
+                icon={
+                  !isLoading &&
+                  (!socketConnected ? (
+                    <Ionicons name="cloud-offline" size={24} color="#95a5a6" />
+                  ) : (
                     <Ionicons name="checkmark-circle" size={24} color="white" />
-                    <Text
-                      style={{
-                        fontSize: 18,
-                        fontWeight: "700",
-                        color: "white",
-                        marginLeft: 8,
-                        fontFamily: "Montserrat_700Bold",
-                      }}
-                    >
-                      Guardar Perfil
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
+                  ))
+                }
+                style={{
+                  backgroundColor: !socketConnected
+                    ? "#bdc3c7"
+                    : name.trim() && socketConnected
+                    ? "#34495e" // Color original del perfil
+                    : "#bdc3c7",
+                  borderColor: !socketConnected ? "#95a5a6" : undefined,
+                }}
+                textStyle={{
+                  color: !socketConnected ? "#7f8c8d" : "white",
+                }}
+              />
             </View>
           </ScrollView>
         </SafeAreaView>

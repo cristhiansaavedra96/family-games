@@ -7,11 +7,14 @@ export * from "./components";
 // Hooks
 export * from "./hooks";
 
+// Utils
+export * from "./utils";
+
+// Config & Theme
+export * from "./config";
+
 // Stores (cuando los movamos)
 // export * from "./stores"; // TODO: Crear cuando movamos stores
 
 // Services (cuando los movamos)
 // export * from "./services"; // TODO: Crear cuando movamos services
-
-// Utils
-export * from "./utils";

@@ -14,6 +14,7 @@ import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { ChatPanel, ChatButton, ChatToasts } from "../src/shared/components";
 import { useAvatarSync, useSocket } from "../src/shared/hooks";
+import { Button } from "../src/shared/components/ui";
 
 const { width } = Dimensions.get("window");
 
@@ -324,8 +325,11 @@ export default function Waiting() {
             }}
           >
             {/* Back button */}
-            <TouchableOpacity
+            <Button
               onPress={() => router.back()}
+              variant="ghost"
+              size="small"
+              icon={<Ionicons name="arrow-back" size={20} color="white" />}
               style={{
                 position: "absolute",
                 top: 60,
@@ -334,18 +338,19 @@ export default function Waiting() {
                 height: 40,
                 borderRadius: 20,
                 backgroundColor: "rgba(255,255,255,0.2)",
-                alignItems: "center",
-                justifyContent: "center",
                 borderWidth: 1,
                 borderColor: "rgba(255,255,255,0.3)",
+                paddingVertical: 0,
+                paddingHorizontal: 0,
               }}
-            >
-              <Ionicons name="arrow-back" size={20} color="white" />
-            </TouchableOpacity>
+            />
 
             {/* Exit Room button */}
-            <TouchableOpacity
+            <Button
               onPress={leaveRoom}
+              variant="ghost"
+              size="small"
+              icon={<Ionicons name="exit-outline" size={20} color="white" />}
               style={{
                 position: "absolute",
                 top: 60,
@@ -354,14 +359,12 @@ export default function Waiting() {
                 height: 40,
                 borderRadius: 20,
                 backgroundColor: "rgba(255,255,255,0.2)",
-                alignItems: "center",
-                justifyContent: "center",
                 borderWidth: 1,
                 borderColor: "rgba(255,255,255,0.3)",
+                paddingVertical: 0,
+                paddingHorizontal: 0,
               }}
-            >
-              <Ionicons name="exit-outline" size={20} color="white" />
-            </TouchableOpacity>
+            />
 
             <View style={{ alignItems: "center" }}>
               <Text
@@ -476,31 +479,19 @@ export default function Waiting() {
 
                 {/* Botón de iniciar - Solo para anfitrión */}
                 {isHost && (
-                  <TouchableOpacity
+                  <Button
+                    title="Iniciar Juego"
                     onPress={start}
+                    variant="primary"
+                    size="large"
+                    icon={
+                      <Ionicons name="play-circle" size={24} color="white" />
+                    }
                     style={{
                       backgroundColor: "#27ae60",
                       borderRadius: 12,
-                      paddingVertical: 16,
-                      alignItems: "center",
                     }}
-                  >
-                    <View
-                      style={{ flexDirection: "row", alignItems: "center" }}
-                    >
-                      <Ionicons name="play-circle" size={24} color="white" />
-                      <Text
-                        style={{
-                          color: "white",
-                          fontSize: 18,
-                          fontWeight: "700",
-                          marginLeft: 8,
-                        }}
-                      >
-                        Iniciar Juego
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
+                  />
                 )}
 
                 {/* Mensaje para jugadores no anfitriones */}

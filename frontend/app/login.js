@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, Alert } from "react-native";
+import { View, Text, TextInput, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { Button } from "../src/shared/components/ui";
 import { setUsername } from "../src/shared/utils";
 
 export default function Login() {
@@ -131,56 +132,28 @@ export default function Login() {
             </View>
 
             {/* Login Button */}
-            <TouchableOpacity
+            <Button
+              title={loading ? "Guardando..." : "Continuar"}
               onPress={handleLogin}
               disabled={!username.trim() || loading}
+              loading={loading}
+              variant="primary"
+              size="large"
+              icon={
+                !loading && (
+                  <Ionicons name="arrow-forward" size={20} color="white" />
+                )
+              }
               style={{
                 backgroundColor:
                   username.trim() && !loading
                     ? "#e74c3c"
                     : "rgba(255,255,255,0.2)",
-                borderRadius: 12,
-                paddingVertical: 18,
-                alignItems: "center",
-                justifyContent: "center",
                 shadowColor:
                   username.trim() && !loading ? "#e74c3c" : "transparent",
-                shadowOpacity: 0.3,
-                shadowRadius: 8,
-                shadowOffset: { width: 0, height: 4 },
                 elevation: username.trim() && !loading ? 8 : 0,
               }}
-            >
-              {loading ? (
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <Text
-                    style={{
-                      color: "white",
-                      fontSize: 16,
-                      fontWeight: "700",
-                      fontFamily: "Montserrat_700Bold",
-                    }}
-                  >
-                    Guardando...
-                  </Text>
-                </View>
-              ) : (
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <Ionicons name="arrow-forward" size={20} color="white" />
-                  <Text
-                    style={{
-                      color: "white",
-                      fontSize: 16,
-                      fontWeight: "700",
-                      marginLeft: 8,
-                      fontFamily: "Montserrat_700Bold",
-                    }}
-                  >
-                    Continuar
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
+            />
           </View>
         </SafeAreaView>
       </View>
