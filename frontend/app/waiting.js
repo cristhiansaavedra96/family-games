@@ -12,14 +12,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import socket from "../src/core/socket";
 import { ChatPanel, ChatButton, ChatToasts } from "../src/shared/components";
-import { useAvatarSync } from "../src/shared/hooks";
+import { useAvatarSync, useSocket } from "../src/shared/hooks";
 
 const { width } = Dimensions.get("window");
 
 export default function Waiting() {
   const { roomId, initialState } = useLocalSearchParams();
+  const { socket, isConnected, socketId } = useSocket(); // 🆕 Usar el hook
   // Si initialState viene como string, parsear una sola vez
   const parsedInitial = useMemo(() => {
     if (initialState) {
@@ -56,8 +56,14 @@ export default function Waiting() {
   }, [clearMemoryCache]);
 
   useEffect(() => {
-    setMe(socket.id);
-    const onConnect = () => setMe(socket.id);
+    if (socketId) {
+      setMe(socketId);
+    }
+    const onConnect = () => {
+      if (socket.id) {
+        setMe(socket.id);
+      }
+    };
     // Función onState optimizada:
     const onState = (s) => {
       if (s.roomId === roomId) {

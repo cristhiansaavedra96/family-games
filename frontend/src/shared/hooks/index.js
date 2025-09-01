@@ -5,7 +5,9 @@
 export { useAvatarSync } from "./useAvatarSync";
 export { useMyAvatar } from "./useMyAvatar";
 
+// Socket management hooks
+export { useSocket } from "./useSocket";
+
 // Aquí se agregarán más hooks compartidos como:
-// export { useSocket } from './useSocket';
 // export { useStorage } from './useStorage';
 // export { useProfile } from './useProfile';
