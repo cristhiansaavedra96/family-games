@@ -4,10 +4,11 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useLocalSearchParams, router } from "expo-router";
-import socket from "../src/core/socket";
+import { useSocket } from "../src/shared/hooks";
 
 export default function Leaderboard() {
   const { gameKey } = useLocalSearchParams();
+  const { socket, isConnected, socketId } = useSocket(); // 🆕 Usar el hook
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 

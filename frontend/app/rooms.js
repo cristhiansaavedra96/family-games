@@ -13,12 +13,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import socket from "../src/core/socket";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getUsername } from "../src/shared/utils";
 import * as FileSystem from "expo-file-system";
 
-import { useAvatarSync } from "../src/shared/hooks";
+import { useAvatarSync, useSocket } from "../src/shared/hooks";
 import {
   logAvatarCacheStatus,
   cleanOldCache,
@@ -30,6 +29,7 @@ export default function Rooms() {
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
   const [joiningRoomId, setJoiningRoomId] = useState(null);
   const [myUsername, setMyUsername] = useState(null);
+  const { socket, isConnected, socketId } = useSocket(); // 🆕 Usar el hook
   const { syncAvatar, getAvatarUrl, setLocalAvatarUrl } = useAvatarSync();
 
   // Log de caché de avatares al entrar a la lista de salas

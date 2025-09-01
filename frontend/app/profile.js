@@ -16,10 +16,11 @@ import * as FileSystem from "expo-file-system";
 // import * as Updates from 'expo-updates';
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import socket from "../src/core/socket";
+import { useSocket } from "../src/shared/hooks";
 import { getUsername } from "../src/shared/utils";
 
 export default function Profile() {
+  const { socket, isConnected, socketId } = useSocket(); // 🆕 Usar el hook
   const [name, setName] = useState("");
   const [avatar, setAvatar] = useState(null);
   const [avatarBase64, setAvatarBase64] = useState(null);

@@ -2,9 +2,10 @@
 // Hook para sincronización de avatares SIMPLE Y FUNCIONAL
 import { useState, useCallback } from "react";
 import { getAvatarFromCache, saveAvatarToCache } from "../../core/storage";
-import socket from "../../core/socket";
+import { useSocket } from "./useSocket";
 
 export const useAvatarSync = () => {
+  const { socket } = useSocket(); // 🆕 Usar el hook socket
   const [avatarUrls, setAvatarUrls] = useState(new Map()); // username -> avatarUrl
   const [loading, setLoading] = useState(new Set()); // avatarIds being loaded
 

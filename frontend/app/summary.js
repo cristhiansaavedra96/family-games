@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, FlatList, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import socket from "../src/core/socket";
+import { useSocket } from "../src/shared/hooks";
 
 const labels = {
   corners: "Esquinas",
@@ -16,6 +16,7 @@ const labels = {
 
 export default function Summary() {
   const { roomId } = useLocalSearchParams();
+  const { socket, isConnected, socketId } = useSocket(); // 🆕 Usar el hook
   const [state, setState] = useState({
     players: [],
     figuresClaimed: {},
