@@ -288,13 +288,14 @@ function createGameFlowHandlers({
     // Reclamar victoria (claim)
     claim:
       (socket) =>
-      ({ roomId, figure, cardIndex, marked }) => {
+      ({ roomId, figure, cardIndex, marked, debugMode }) => {
         try {
           console.log(`Claim recibido de ${socket.id}:`, {
             roomId,
             figure,
             cardIndex,
             hasMarked: !!marked,
+            debugMode: !!debugMode,
           });
           const rid = roomId || socket.data.roomId;
 
@@ -321,7 +322,8 @@ function createGameFlowHandlers({
                 cardIndex,
                 marked,
                 require("../services/statsService"),
-                require("../core/datastore").getDataStore()
+                require("../core/datastore").getDataStore(),
+                !!debugMode
               )
             : gameHandler.autoClaim(
                 socket.id,

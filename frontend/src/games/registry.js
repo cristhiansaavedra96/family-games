@@ -17,7 +17,7 @@ export const AVAILABLE_GAMES = {
     // Rutas
     routes: {
       rooms: "/rooms", // Para seleccionar sala
-      game: "/games/bingo", // Pantalla del juego
+      game: "/games/bingo/[roomId]", // Pantalla del juego con roomId dinámico
     },
     // Configuración específica
     config: {

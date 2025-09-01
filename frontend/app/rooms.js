@@ -125,10 +125,7 @@ export default function Rooms() {
         socket.once("joined", ({ roomId: joinedRoomId }) => {
           setJoiningRoomId(null);
           // Ir directamente al juego en lugar de la sala de espera
-          router.push({
-            pathname: "/games/bingo",
-            params: { roomId: joinedRoomId },
-          });
+          router.push(`/games/bingo/${joinedRoomId}`);
         });
       } else {
         // Flujo normal para salas que no han empezado

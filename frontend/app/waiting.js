@@ -74,9 +74,7 @@ export default function Waiting() {
       }
 
       if (s.started) {
-        const gameRoute =
-          s.gameKey === "bingo" ? "/games/bingo/" : "/games/bingo/";
-        router.replace({ pathname: gameRoute, params: { roomId } });
+        router.replace(`/games/bingo/${roomId}`);
       }
     };
 

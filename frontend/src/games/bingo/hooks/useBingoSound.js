@@ -1,15 +1,15 @@
-import { useRef, useCallback, useEffect, useState } from 'react';
-import { useAudioPlayer } from 'expo-audio';
-import { Asset } from 'expo-asset';
+import { useRef, useCallback, useEffect, useState } from "react";
+import { useAudioPlayer } from "expo-audio";
+import { Asset } from "expo-asset";
 
 // Cambiar imports por requires para mejor bundling
 const sources = {
-  background: require('./bingo/background_music.mp3'),
-  start: require('./bingo/start.mp3'),
-  win: require('./bingo/win.mp3'),
-  select: require('./bingo/select.mp3'),
-  logro: require('./bingo/logro.mp3'),
-}
+  background: require("../assets/sounds/background_music.mp3"),
+  start: require("../assets/sounds/start.mp3"),
+  win: require("../assets/sounds/win.mp3"),
+  select: require("../assets/sounds/select.mp3"),
+  logro: require("../assets/sounds/logro.mp3"),
+};
 
 export function useBingoSound() {
   const [assetsReady, setAssetsReady] = useState(true);
@@ -23,10 +23,17 @@ export function useBingoSound() {
   const [musicMuted, setMusicMuted] = useState(false);
   const [effectsMuted, setEffectsMuted] = useState(false);
   const effectsMutedRef = useRef(effectsMuted);
-  useEffect(() => { effectsMutedRef.current = effectsMuted; }, [effectsMuted]);
-  
+  useEffect(() => {
+    effectsMutedRef.current = effectsMuted;
+  }, [effectsMuted]);
+
   // Volúmenes por efecto (ajustables)
-  const defaultEffectVolumes = useRef({ start: 0.15, win: 0.8, select: 0.2, logro: 0.7 });
+  const defaultEffectVolumes = useRef({
+    start: 0.15,
+    win: 0.8,
+    select: 0.2,
+    logro: 0.7,
+  });
   const bgTargetVolume = 0.03;
   const bgFadeTimerRef = useRef(null);
 
@@ -36,14 +43,14 @@ export function useBingoSound() {
   useEffect(() => {
     if (!assetsReady || !bg) return;
     try {
-      if ('volume' in bg) bg.volume = bgTargetVolume;
+      if ("volume" in bg) bg.volume = bgTargetVolume;
       // Intentos de loop según API disponible
-      if ('looping' in bg) bg.looping = true;
+      if ("looping" in bg) bg.looping = true;
       bg.loop = true;
-      if (typeof bg.setLooping === 'function') bg.setLooping(true);
-      if (typeof bg.setIsLooping === 'function') bg.setIsLooping(true);
+      if (typeof bg.setLooping === "function") bg.setLooping(true);
+      if (typeof bg.setIsLooping === "function") bg.setIsLooping(true);
     } catch (error) {
-      console.warn('Error configurando background:', error);
+      console.warn("Error configurando background:", error);
     }
 
     // Intervalo para verificar si la música sigue sonando
@@ -52,9 +59,14 @@ export function useBingoSound() {
         if (!assetsReady || !bg || musicMuted) return;
         // Si está pausado o no está reproduciendo, intentar reiniciar
         // Chequeos típicos: paused, isPlaying, etc.
-        if ((bg.paused === true) || (bg.isPlaying === false) || (typeof bg.getStatusAsync === 'function' && bg.getStatusAsync().then?.(s => !s.isPlaying))) {
-          if (typeof bg.seekTo === 'function') bg.seekTo(0);
-          if (typeof bg.play === 'function') bg.play();
+        if (
+          bg.paused === true ||
+          bg.isPlaying === false ||
+          (typeof bg.getStatusAsync === "function" &&
+            bg.getStatusAsync().then?.((s) => !s.isPlaying))
+        ) {
+          if (typeof bg.seekTo === "function") bg.seekTo(0);
+          if (typeof bg.play === "function") bg.play();
         }
       } catch (e) {
         // Silenciar errores
@@ -65,27 +77,28 @@ export function useBingoSound() {
 
   const startBackground = useCallback(() => {
     if (!assetsReady || !bg || musicMuted) return;
-    
+
     try {
       // Fade-in para evitar picos
-      if (bgFadeTimerRef.current) { 
-        clearInterval(bgFadeTimerRef.current); 
-        bgFadeTimerRef.current = null; 
+      if (bgFadeTimerRef.current) {
+        clearInterval(bgFadeTimerRef.current);
+        bgFadeTimerRef.current = null;
       }
-      
-      if ('volume' in bg) bg.volume = 0;
-      if (typeof bg.seekTo === 'function') bg.seekTo(0);
-      if (typeof bg.play === 'function') bg.play();
-      
+
+      if ("volume" in bg) bg.volume = 0;
+      if (typeof bg.seekTo === "function") bg.seekTo(0);
+      if (typeof bg.play === "function") bg.play();
+
       // Incremento en 8 pasos hasta bgTargetVolume
-      let steps = 8, i = 0;
+      let steps = 8,
+        i = 0;
       const step = bgTargetVolume / steps;
       bgFadeTimerRef.current = setInterval(() => {
         try {
-          if (!('volume' in bg)) { 
-            clearInterval(bgFadeTimerRef.current); 
-            bgFadeTimerRef.current = null; 
-            return; 
+          if (!("volume" in bg)) {
+            clearInterval(bgFadeTimerRef.current);
+            bgFadeTimerRef.current = null;
+            return;
           }
           const next = Math.min(bgTargetVolume, (bg.volume || 0) + step);
           bg.volume = next;
@@ -101,49 +114,49 @@ export function useBingoSound() {
         }
       }, 60);
     } catch (e) {
-      console.warn('[useBingoSound] startBackground failed', e);
+      console.warn("[useBingoSound] startBackground failed", e);
     }
   }, [bg, musicMuted, assetsReady]);
 
   const stopBackground = useCallback(() => {
     if (!bg) return;
-    
+
     try {
-      if (bgFadeTimerRef.current) { 
-        clearInterval(bgFadeTimerRef.current); 
-        bgFadeTimerRef.current = null; 
+      if (bgFadeTimerRef.current) {
+        clearInterval(bgFadeTimerRef.current);
+        bgFadeTimerRef.current = null;
       }
-      
+
       // Verificar que el reproductor no haya sido liberado
-      if (bg && typeof bg.pause === 'function') {
+      if (bg && typeof bg.pause === "function") {
         try {
-          if ('volume' in bg) bg.volume = 0;
+          if ("volume" in bg) bg.volume = 0;
           bg.pause();
         } catch (releaseError) {
-          console.warn('Background player was already released:', releaseError);
+          console.warn("Background player was already released:", releaseError);
         }
       }
     } catch (error) {
-      console.warn('Error stopping background:', error);
+      console.warn("Error stopping background:", error);
     }
   }, [bg]);
 
   const playEffect = (type) => {
     if (effectsMutedRef.current) return;
-    
+
     const now = Date.now();
     const { type: lastType, at } = lastEffectRef.current || {};
-    if (type === 'logro' && lastType === 'win' && now - at < 1500) return;
+    if (type === "logro" && lastType === "win" && now - at < 1500) return;
     if (lastType === type && now - at < 200) return;
     try {
-      if (type === 'start' && sStart) { 
-        if ('volume' in sStart) sStart.volume = defaultEffectVolumes.current.start; 
-        sStart.seekTo?.(0); 
-        sStart.play?.(); 
-      }
-      else if (type === 'win' && sWin) { 
-        if ('volume' in sWin) sWin.volume = defaultEffectVolumes.current.win; 
-    try {
+      if (type === "start" && sStart) {
+        if ("volume" in sStart)
+          sStart.volume = defaultEffectVolumes.current.start;
+        sStart.seekTo?.(0);
+        sStart.play?.();
+      } else if (type === "win" && sWin) {
+        if ("volume" in sWin) sWin.volume = defaultEffectVolumes.current.win;
+        try {
           sWin.seekTo?.(0);
           const p = sWin.play?.();
           if (p && typeof p.then === "function") {
@@ -154,9 +167,9 @@ export function useBingoSound() {
         } catch (e) {
           console.warn("playEffect failed", e);
         }
-      }
-      else if (type === 'select' && sSelect) { 
-        if ('volume' in sSelect) sSelect.volume = defaultEffectVolumes.current.select; 
+      } else if (type === "select" && sSelect) {
+        if ("volume" in sSelect)
+          sSelect.volume = defaultEffectVolumes.current.select;
         try {
           sSelect.seekTo?.(0);
           const p = sSelect.play?.();
@@ -168,9 +181,9 @@ export function useBingoSound() {
         } catch (e) {
           console.warn("playEffect failed", e);
         }
-      }
-      else if (type === 'logro' && sLogro) { 
-        if ('volume' in sLogro) sLogro.volume = defaultEffectVolumes.current.logro; 
+      } else if (type === "logro" && sLogro) {
+        if ("volume" in sLogro)
+          sLogro.volume = defaultEffectVolumes.current.logro;
         try {
           sLogro.seekTo?.(0);
           const p = sLogro.play?.();
@@ -183,30 +196,38 @@ export function useBingoSound() {
           console.warn("playEffect failed", e);
         }
       }
-      
+
       lastEffectRef.current = { type, at: now };
     } catch (e) {
-      console.warn('[useBingoSound] playEffect failed', type, e);
+      console.warn("[useBingoSound] playEffect failed", type, e);
     }
   };
 
   // Aplicar mute de efectos forzando volumen 0 y pausando si está activo
   useEffect(() => {
     if (!assetsReady) return;
-    
+
     const players = [sStart, sWin, sSelect, sLogro];
     try {
       players.forEach((p) => {
         if (!p) return;
         if (effectsMuted) {
-          try { p.pause?.(); } catch {}
-          try { if ('volume' in p) p.volume = 0; } catch {}
+          try {
+            p.pause?.();
+          } catch {}
+          try {
+            if ("volume" in p) p.volume = 0;
+          } catch {}
         } else {
           try {
-            if (p === sStart && 'volume' in p) p.volume = defaultEffectVolumes.current.start;
-            if (p === sWin && 'volume' in p) p.volume = defaultEffectVolumes.current.win;
-            if (p === sSelect && 'volume' in p) p.volume = defaultEffectVolumes.current.select;
-            if (p === sLogro && 'volume' in p) p.volume = defaultEffectVolumes.current.logro;
+            if (p === sStart && "volume" in p)
+              p.volume = defaultEffectVolumes.current.start;
+            if (p === sWin && "volume" in p)
+              p.volume = defaultEffectVolumes.current.win;
+            if (p === sSelect && "volume" in p)
+              p.volume = defaultEffectVolumes.current.select;
+            if (p === sLogro && "volume" in p)
+              p.volume = defaultEffectVolumes.current.logro;
           } catch {}
         }
       });
@@ -221,11 +242,11 @@ export function useBingoSound() {
           clearInterval(bgFadeTimerRef.current);
           bgFadeTimerRef.current = null;
         }
-        
+
         // Limpiar todos los reproductores de audio
         const players = [bg, sStart, sWin, sSelect, sLogro];
-        players.forEach(player => {
-          if (player && typeof player.pause === 'function') {
+        players.forEach((player) => {
+          if (player && typeof player.pause === "function") {
             try {
               player.pause();
             } catch (e) {
@@ -234,7 +255,7 @@ export function useBingoSound() {
           }
         });
       } catch (error) {
-        console.warn('Error during audio cleanup:', error);
+        console.warn("Error during audio cleanup:", error);
       }
     };
   }, [bg, sStart, sWin, sSelect, sLogro]);

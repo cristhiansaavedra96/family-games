@@ -279,13 +279,22 @@ class BingoGameHandler extends BaseGameHandler {
     cardIndex,
     markedFromClient,
     statsService,
-    dataStore
+    dataStore,
+    isDebugMode = false
   ) {
     if (this.gameState.figuresClaimed[figure])
       return { ok: false, reason: "figure_taken" };
 
-    const valid = this.validateAndFlags(socketId, cardIndex, markedFromClient);
-    if (!valid.ok) return valid;
+    let valid;
+    if (isDebugMode) {
+      // En modo debug, siempre validar como correcto
+      valid = { ok: true, flags: { [figure]: true } };
+      console.log(`🐛 DEBUG MODE: Auto-validating claim for figure: ${figure}`);
+    } else {
+      // Validación normal
+      valid = this.validateAndFlags(socketId, cardIndex, markedFromClient);
+      if (!valid.ok) return valid;
+    }
 
     const { flags } = valid;
     if (!flags[figure]) return { ok: false, reason: "invalid" };

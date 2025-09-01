@@ -1,18 +1,16 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Platform } from 'react-native';
+import React, { useEffect, useRef, useState } from "react";
+import { View, Text, Platform } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
   runOnJS,
-} from 'react-native-reanimated';
-import { getBingoColorByIndexOrNumber } from './BingoCard';
-import useBingoUiStore from '../../../store/bingoUiStore';
-
+} from "react-native-reanimated";
+import { getBingoColorByIndexOrNumber } from "./BingoCard";
+import { useBingoUiStore } from "../stores";
 
 let actualBall = null;
 export function SimpleBingoBall({ style }) {
-
   const prevBall = useBingoUiStore((s) => s.prevBall);
   const currentBall = useBingoUiStore((s) => s.currentBall);
 
@@ -26,7 +24,12 @@ export function SimpleBingoBall({ style }) {
   const lastBall = useRef(null);
 
   useEffect(() => {
-    if (!currentBall || lastBall.current === currentBall || actualBall === currentBall) return;
+    if (
+      !currentBall ||
+      lastBall.current === currentBall ||
+      actualBall === currentBall
+    )
+      return;
 
     // Mostrar bola anterior y ocultar la nueva
     setShowPrev(true);
@@ -35,7 +38,6 @@ export function SimpleBingoBall({ style }) {
     prevOpacity.value = 1;
     currScale.value = 0.5;
     currOpacity.value = 0.5;
-
 
     // Animar salida de la bola anterior (más rápido)
     prevScale.value = withTiming(0.5, { duration: 350 });
@@ -72,10 +74,10 @@ export function SimpleBingoBall({ style }) {
     height: 100,
     borderRadius: 50,
     borderWidth: 6,
-    borderColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'absolute',
+    borderColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "absolute",
   };
 
   const renderBall = (ball, color, extraStyle) =>
@@ -83,14 +85,14 @@ export function SimpleBingoBall({ style }) {
       <Animated.View style={[ballBase, { backgroundColor: color }, extraStyle]}>
         <Text
           style={{
-            color: '#fff',
+            color: "#fff",
             fontSize: 56,
-            fontFamily: 'Mukta_700Bold',
+            fontFamily: "Mukta_700Bold",
             lineHeight: 58,
             includeFontPadding: false,
-            textAlignVertical: 'center',
-            transform: [{ translateY: Platform.OS === 'android' ? 1 : 2 }],
-            textShadowColor: 'rgba(0,0,0,0.3)',
+            textAlignVertical: "center",
+            transform: [{ translateY: Platform.OS === "android" ? 1 : 2 }],
+            textShadowColor: "rgba(0,0,0,0.3)",
             textShadowOffset: { width: 1, height: 1 },
             textShadowRadius: 2,
           }}
@@ -101,9 +103,20 @@ export function SimpleBingoBall({ style }) {
     );
 
   return (
-    <View style={[{ alignItems: 'center', justifyContent: 'center', paddingTop: 100 }, style]}>
-      {showPrev && renderBall(prevBall, getBingoColorByIndexOrNumber(prevBall), prevStyle)}
-      {showCurr && renderBall(currentBall, getBingoColorByIndexOrNumber(currentBall), currStyle)}
+    <View
+      style={[
+        { alignItems: "center", justifyContent: "center", paddingTop: 100 },
+        style,
+      ]}
+    >
+      {showPrev &&
+        renderBall(prevBall, getBingoColorByIndexOrNumber(prevBall), prevStyle)}
+      {showCurr &&
+        renderBall(
+          currentBall,
+          getBingoColorByIndexOrNumber(currentBall),
+          currStyle
+        )}
     </View>
   );
 }
