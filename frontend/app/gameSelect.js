@@ -4,10 +4,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getAvailableGames } from "../src/games/registry";
+import { useStorage } from "../src/shared/hooks";
 
 export default function Games() {
+  const { loadItem } = useStorage(); // 🆕 Hook para storage
   const [userAvatar, setUserAvatar] = useState(null);
 
   // Cargar avatar del usuario
@@ -17,7 +18,7 @@ export default function Games() {
 
   const loadUserAvatar = async () => {
     try {
-      const savedAvatar = await AsyncStorage.getItem("profile:avatar");
+      const savedAvatar = await loadItem("profile:avatar");
       if (savedAvatar) {
         setUserAvatar(savedAvatar);
       }

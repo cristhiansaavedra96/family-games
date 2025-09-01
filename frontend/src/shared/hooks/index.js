@@ -8,6 +8,8 @@ export { useMyAvatar } from "./useMyAvatar";
 // Socket management hooks
 export { useSocket } from "./useSocket";
 
+// Storage management hooks
+export { useStorage } from "./useStorage";
+
 // Aquí se agregarán más hooks compartidos como:
-// export { useStorage } from './useStorage';
 // export { useProfile } from './useProfile';

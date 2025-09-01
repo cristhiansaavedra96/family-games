@@ -16,11 +16,12 @@ import * as FileSystem from "expo-file-system";
 // import * as Updates from 'expo-updates';
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useSocket } from "../src/shared/hooks";
+import { useSocket, useStorage } from "../src/shared/hooks";
 import { getUsername } from "../src/shared/utils";
 
 export default function Profile() {
   const { socket, isConnected, socketId } = useSocket(); // 🆕 Usar el hook
+  const { loadItem, saveItem } = useStorage(); // 🆕 Hook para storage
   const [name, setName] = useState("");
   const [avatar, setAvatar] = useState(null);
   const [avatarBase64, setAvatarBase64] = useState(null);
@@ -61,8 +62,8 @@ export default function Profile() {
 
   const loadProfile = async () => {
     try {
-      const savedName = await AsyncStorage.getItem("profile:name");
-      const savedAvatar = await AsyncStorage.getItem("profile:avatar");
+      const savedName = await loadItem("profile:name");
+      const savedAvatar = await loadItem("profile:avatar");
       const currentUsername = await getUsername();
 
       if (savedName) setName(savedName);
@@ -167,9 +168,9 @@ export default function Profile() {
 
     try {
       // Guardar localmente primero
-      await AsyncStorage.setItem("profile:name", name.trim());
+      await saveItem("profile:name", name.trim());
       if (avatar) {
-        await AsyncStorage.setItem("profile:avatar", avatar);
+        await saveItem("profile:avatar", avatar);
       }
 
       // Asegurar conexión del socket con reintentos

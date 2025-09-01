@@ -20,8 +20,7 @@ import * as Bingo from "..";
 import { getBingoColorByIndexOrNumber } from "../components/BingoCard";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { ChatPanel, ChatButton, ChatToasts } from "../../../shared/components";
-import { useAvatarSync, useSocket } from "../../../shared/hooks";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAvatarSync, useSocket, useStorage } from "../../../shared/hooks";
 import * as FileSystem from "expo-file-system";
 import { getUsername } from "../../../shared/utils";
 import { saveAvatarToCache } from "../../../core/storage";
@@ -41,6 +40,7 @@ import { useBingoUiStore } from "../stores";
 export default function Game() {
   const insets = useSafeAreaInsets();
   const { socket, isConnected, socketId } = useSocket(); // 🆕 Usar el hook
+  const { loadItem } = useStorage(); // 🆕 Hook para storage
   const { syncPlayers, getAvatarUrl, syncAvatar, setLocalAvatarUrl } =
     useAvatarSync();
   const { myAvatar, myUsername, myName } = useMyAvatar(); // Hook para mi avatar local
@@ -427,7 +427,7 @@ export default function Game() {
       if (myPlayer && (!myPlayer.name || !myPlayer.username)) {
         try {
           const [savedName, savedUsername] = await Promise.all([
-            AsyncStorage.getItem("profile:name"),
+            loadItem("profile:name"),
             getUsername(),
           ]);
         } catch (error) {
@@ -460,7 +460,7 @@ export default function Game() {
       const recheckAvatar = async () => {
         try {
           const myUsername = await getUsername();
-          const savedAvatarPath = await AsyncStorage.getItem("profile:avatar");
+          const savedAvatarPath = await loadItem("profile:avatar");
 
           if (myUsername && savedAvatarPath) {
             const base64 = await FileSystem.readAsStringAsync(savedAvatarPath, {
@@ -653,7 +653,7 @@ export default function Game() {
     if (!username || !name) {
       const [currentUsername, currentName] = await Promise.all([
         getUsername(),
-        AsyncStorage.getItem("profile:name"),
+        loadItem("profile:name"),
       ]);
       username = username || currentUsername;
       name = name || currentName;

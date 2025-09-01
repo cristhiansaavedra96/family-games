@@ -13,11 +13,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getUsername } from "../src/shared/utils";
 import * as FileSystem from "expo-file-system";
 
-import { useAvatarSync, useSocket } from "../src/shared/hooks";
+import { useAvatarSync, useSocket, useStorage } from "../src/shared/hooks";
 import {
   logAvatarCacheStatus,
   cleanOldCache,
@@ -30,6 +29,7 @@ export default function Rooms() {
   const [joiningRoomId, setJoiningRoomId] = useState(null);
   const [myUsername, setMyUsername] = useState(null);
   const { socket, isConnected, socketId } = useSocket(); // 🆕 Usar el hook
+  const { loadItem } = useStorage(); // 🆕 Hook para storage
   const { syncAvatar, getAvatarUrl, setLocalAvatarUrl } = useAvatarSync();
 
   // Log de caché de avatares al entrar a la lista de salas
@@ -46,7 +46,7 @@ export default function Rooms() {
   // Helper function to convert local avatar to base64
   const getAvatarBase64 = async () => {
     try {
-      const avatarPath = await AsyncStorage.getItem("profile:avatar");
+      const avatarPath = await loadItem("profile:avatar");
       if (!avatarPath) {
         return null;
       }
@@ -83,7 +83,7 @@ export default function Rooms() {
     const loadMyAvatarForRooms = async () => {
       try {
         const myUsername = await getUsername();
-        const savedAvatarPath = await AsyncStorage.getItem("profile:avatar");
+        const savedAvatarPath = await loadItem("profile:avatar");
         if (myUsername && savedAvatarPath) {
           const base64 = await FileSystem.readAsStringAsync(savedAvatarPath, {
             encoding: FileSystem.EncodingType.Base64,
@@ -116,7 +116,7 @@ export default function Rooms() {
     if (joiningRoomId) return; // Prevenir múltiples clicks
     setJoiningRoomId(roomId);
     try {
-      const name = await AsyncStorage.getItem("profile:name");
+      const name = await loadItem("profile:name");
       const username = await getUsername();
 
       if (isReconnect) {
@@ -166,7 +166,7 @@ export default function Rooms() {
 
     setIsCreatingRoom(true);
     try {
-      const name = await AsyncStorage.getItem("profile:name");
+      const name = await loadItem("profile:name");
       const username = await getUsername();
       // No enviar avatar - el servidor lo obtiene de la BD
       socket.emit("createRoom", {

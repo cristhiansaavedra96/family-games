@@ -1,10 +1,10 @@
 // Username como "login" sin contraseña - se pide una sola vez
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { loadFromStorage, saveToStorage } from "./storage";
 
 export async function getUsername() {
   try {
-    const key = 'auth:username';
-    let username = await AsyncStorage.getItem(key);
+    const key = "auth:username";
+    let username = await loadFromStorage(key);
     return username;
   } catch (_e) {
     return null;
@@ -13,9 +13,9 @@ export async function getUsername() {
 
 export async function setUsername(username) {
   try {
-    const key = 'auth:username';
-    await AsyncStorage.setItem(key, username.trim());
-    return true;
+    const key = "auth:username";
+    const result = await saveToStorage(key, username.trim());
+    return result.success;
   } catch (_e) {
     return false;
   }
