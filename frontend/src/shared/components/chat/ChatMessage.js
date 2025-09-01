@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { View, Text, Image, Animated } from "react-native";
-import { useAvatarSync } from "../hooks/useAvatarSync";
+import { useAvatarSync } from "../../hooks";
 
 export default function ChatMessage({ message, onComplete }) {
   const fadeAnim = useRef(new Animated.Value(0)).current;

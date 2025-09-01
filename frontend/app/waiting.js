@@ -12,9 +12,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import socket from "../src/socket";
-import { ChatPanel, ChatButton, ChatToasts } from "../src/components";
-import { useAvatarSync } from "../src/hooks/useAvatarSync";
+import socket from "../src/core/socket";
+import { ChatPanel, ChatButton, ChatToasts } from "../src/shared/components";
+import { useAvatarSync } from "../src/shared/hooks";
 
 const { width } = Dimensions.get("window");
 

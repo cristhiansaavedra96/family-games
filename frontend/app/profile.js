@@ -16,8 +16,8 @@ import * as FileSystem from "expo-file-system";
 // import * as Updates from 'expo-updates';
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import socket from "../src/socket";
-import { getUsername } from "../src/utils";
+import socket from "../src/core/socket";
+import { getUsername } from "../src/shared/utils";
 
 export default function Profile() {
   const [name, setName] = useState("");

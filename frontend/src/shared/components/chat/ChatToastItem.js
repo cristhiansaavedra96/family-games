@@ -1,6 +1,6 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Text, Image, Animated } from 'react-native';
-import { useAvatarSync } from '../hooks/useAvatarSync';
+import React, { useEffect, useRef } from "react";
+import { View, Text, Image, Animated } from "react-native";
+import { useAvatarSync } from "../../hooks";
 
 export default function ChatToastItem({ message, onComplete }) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -19,7 +19,7 @@ export default function ChatToastItem({ message, onComplete }) {
     // Sincronizar avatar si tenemos avatarId válido pero no está en caché
     if (message.player?.avatarId && message.player?.username) {
       // No intentar sincronizar avatarIds temporales (local_*)
-      if (!message.player.avatarId.startsWith('local_')) {
+      if (!message.player.avatarId.startsWith("local_")) {
         const currentAvatarUrl = getAvatarUrl(message.player.username);
         if (!currentAvatarUrl) {
           syncAvatar(message.player.username, message.player.avatarId);
@@ -77,13 +77,13 @@ export default function ChatToastItem({ message, onComplete }) {
     >
       <View
         style={{
-          backgroundColor: 'rgba(255,255,255,0.96)',
+          backgroundColor: "rgba(255,255,255,0.96)",
           borderRadius: 14,
           paddingVertical: 8,
           paddingHorizontal: 10,
-          flexDirection: 'row',
-          alignItems: 'center',
-          shadowColor: '#000',
+          flexDirection: "row",
+          alignItems: "center",
+          shadowColor: "#000",
           shadowOpacity: 0.12,
           shadowRadius: 6,
           shadowOffset: { width: 0, height: 3 },
@@ -92,43 +92,57 @@ export default function ChatToastItem({ message, onComplete }) {
       >
         {getAvatarUrl(message.player?.username) ? (
           <Image
-            source={{ 
-              uri: getAvatarUrl(message.player?.username)
+            source={{
+              uri: getAvatarUrl(message.player?.username),
             }}
             style={{ width: 28, height: 28, borderRadius: 14, marginRight: 8 }}
           />
         ) : (
-          <View style={{
-            width: 28,
-            height: 28,
-            borderRadius: 14,
-            marginRight: 8,
-            backgroundColor: '#f0f0f0',
-            justifyContent: 'center',
-            alignItems: 'center'
-          }}>
-            <Text style={{ fontSize: 14, color: '#666' }}>👤</Text>
+          <View
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              marginRight: 8,
+              backgroundColor: "#f0f0f0",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ fontSize: 14, color: "#666" }}>👤</Text>
           </View>
         )}
         <View style={{ flexShrink: 1 }}>
           <Text
             style={{
               fontSize: 10,
-              fontWeight: '600',
-              color: '#7f8c8d',
+              fontWeight: "600",
+              color: "#7f8c8d",
               marginBottom: 2,
-              fontFamily: 'Montserrat_600SemiBold',
+              fontFamily: "Montserrat_600SemiBold",
             }}
             numberOfLines={1}
           >
             {message.player?.name}
           </Text>
-          {message.type === 'emoji' ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
-              <Text style={{ fontSize: 16, marginRight: 6 }}>{message.content}</Text>
+          {message.type === "emoji" ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                flexShrink: 1,
+              }}
+            >
+              <Text style={{ fontSize: 16, marginRight: 6 }}>
+                {message.content}
+              </Text>
               {!!message.label && (
                 <Text
-                  style={{ fontSize: 12, color: '#2c3e50', fontFamily: 'Montserrat_500Medium' }}
+                  style={{
+                    fontSize: 12,
+                    color: "#2c3e50",
+                    fontFamily: "Montserrat_500Medium",
+                  }}
                   numberOfLines={2}
                 >
                   {message.label}
@@ -137,7 +151,11 @@ export default function ChatToastItem({ message, onComplete }) {
             </View>
           ) : (
             <Text
-              style={{ fontSize: 12.5, color: '#2c3e50', fontFamily: 'Montserrat_500Medium' }}
+              style={{
+                fontSize: 12.5,
+                color: "#2c3e50",
+                fontFamily: "Montserrat_500Medium",
+              }}
               numberOfLines={3}
             >
               {message.content}

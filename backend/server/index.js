@@ -6,7 +6,6 @@ const { Server } = require("socket.io");
 const dotenv = require("dotenv");
 const RoomsManager = require("./core/RoomsManager");
 const GameHandlerFactory = require("./games/GameHandlerFactory");
-const { getDataStore } = require("./core/datastore");
 const {
   createUpdateProfileHandler,
   createCompressAllAvatarsHandler,

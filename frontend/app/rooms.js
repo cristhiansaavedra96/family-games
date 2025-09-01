@@ -13,17 +13,17 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import socket from "../src/socket";
+import socket from "../src/core/socket";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getUsername } from "../src/utils";
+import { getUsername } from "../src/shared/utils";
 import * as FileSystem from "expo-file-system";
 
-import { useAvatarSync } from "../src/hooks/useAvatarSync";
+import { useAvatarSync } from "../src/shared/hooks";
 import {
   logAvatarCacheStatus,
   cleanOldCache,
   purgeLegacyAvatarCache,
-} from "../src/services/avatarCache";
+} from "../src/core/storage";
 
 export default function Rooms() {
   const [rooms, setRooms] = useState([]);
