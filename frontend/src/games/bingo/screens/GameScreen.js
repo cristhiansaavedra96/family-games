@@ -67,6 +67,8 @@ export default function Game() {
   const [showGameSummary, setShowGameSummary] = useState(false);
   const [gameSummaryData, setGameSummaryData] = useState(null);
   const [playersReady, setPlayersReady] = useState({}); // Jugadores listos para nueva partida
+  const [isExitingFromSummary, setIsExitingFromSummary] = useState(false); // Nueva variable para controlar salida desde summary
+  const [countdown, setCountdown] = useState(null); // Estado para el contador 3, 2, 1
   const allowExitRef = useRef(false);
   const [areaW, setAreaW] = useState(0);
   const [areaH, setAreaH] = useState(0);
@@ -129,25 +131,11 @@ export default function Game() {
         });
         setPlayersReady(readyObj);
       }
-
-      // 🔧 MEJORADO: Si comenzó una nueva partida, cerrar el resumen automáticamente
-      if (showGameSummary && s?.started && !s?.gameEnded) {
-        setShowGameSummary(false);
-        setGameSummaryData(null);
-        handleHideModal("gameresumen");
-      }
     });
     socket.on("ball", (n) => {
       // Efecto de inicio al recibir la primera bola de una nueva partida
       if (!hasGameStartedRef.current) {
         hasGameStartedRef.current = true;
-      }
-
-      // 🔧 Si recibimos una bola y el GameSummaryModal está abierto, cerrarlo
-      if (showGameSummary) {
-        setShowGameSummary(false);
-        setGameSummaryData(null);
-        handleHideModal("gameresumen");
       }
 
       // Actualizar inmediatamente el estado con la nueva bolilla para que aparezca en el historial
@@ -171,6 +159,9 @@ export default function Game() {
       }, 600);
     });
     socket.on("gameOver", (payload) => {
+      // Limpiar la SimpleBingoBall cuando termina la partida
+      clearBalls();
+
       // En lugar de ir a summary, mostrar modal de resumen
       setGameSummaryData(payload);
       handleShowModal("gameresumen");
@@ -281,6 +272,25 @@ export default function Game() {
     }
   }, [musicMuted, assetsReady]); // Removemos las funciones como dependencias
 
+  // 🔧 detectar cuando todos los jugadores están listos
+  useEffect(() => {
+    const totalPlayers = state.players?.length || 0;
+    const readyPlayerIds = Object.keys(playersReady).filter(
+      (id) => playersReady[id]
+    );
+    const readyCount = readyPlayerIds.length;
+
+    if (
+      totalPlayers > 0 &&
+      readyCount === totalPlayers &&
+      showGameSummary &&
+      !countdown
+    ) {
+      console.log("🎮 useEffect detectó todos listos - iniciando contador");
+      startCountdown();
+    }
+  }, [playersReady, state.players, showGameSummary, countdown, startCountdown]);
+
   // Resetear flag de inicio cuando se detecta una nueva partida (sin bolillas)
   useEffect(() => {
     if (
@@ -347,12 +357,12 @@ export default function Game() {
   // Confirmación al salir
   useEffect(() => {
     const sub = navigation.addListener("beforeRemove", (e) => {
-      if (allowExitRef.current) return; // permitir salida real
+      if (allowExitRef.current || isExitingFromSummary) return; // permitir salida real
       e.preventDefault();
       handleShowModal("exit");
     });
     const onBack = () => {
-      if (allowExitRef.current) return false; // permitir back real
+      if (allowExitRef.current || isExitingFromSummary) return false; // permitir back real
       handleShowModal("exit");
       return true;
     };
@@ -361,7 +371,7 @@ export default function Game() {
       sub && sub();
       backSub?.remove && backSub.remove();
     };
-  }, [navigation]);
+  }, [navigation, isExitingFromSummary]); // Agregar isExitingFromSummary como dependencia
 
   // Funciones helper para manejar modales de forma segura
   const handleShowModal = useCallback((modalName) => {
@@ -396,6 +406,39 @@ export default function Game() {
         setShowSpeedSelect(false);
         break;
     }
+  }, []);
+
+  // Función para iniciar el contador de 3, 2, 1
+  const startCountdown = useCallback(() => {
+    setCountdown(5);
+
+    const countdownInterval = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev === null) {
+          clearInterval(countdownInterval);
+          return null;
+        }
+
+        if (prev === 1) {
+          setTimeout(() => {
+            setShowGameSummary(false);
+            setPlayersReady({});
+            handleHideModal("gameresumen");
+            // Limpiar gameSummaryData después de cerrar el modal
+            setTimeout(() => {
+              setGameSummaryData(null);
+            }, 200);
+          }, 50);
+          clearInterval(countdownInterval);
+          return null;
+        }
+
+        return prev - 1;
+      });
+    }, 1000);
+
+    // Limpiar timeout si el componente se desmonta
+    return () => clearInterval(countdownInterval);
   }, []);
 
   // Las animaciones se limpian automáticamente en el hook useBingoAnimations
@@ -856,28 +899,6 @@ export default function Game() {
               color={effectsMuted ? "#95a5a6" : "#2c3e50"}
             />
           </TouchableOpacity>
-
-          {/* 🐛 Botón de DEBUG - Solo para testing */}
-          <TouchableOpacity
-            onPress={() => debugClaimFigure("corners")}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: "#e74c3c",
-              alignItems: "center",
-              justifyContent: "center",
-              shadowColor: "#000",
-              shadowOpacity: 0.1,
-              shadowRadius: 4,
-              shadowOffset: { width: 0, height: 2 },
-              elevation: 3,
-              marginLeft: 8,
-            }}
-            accessibilityLabel="DEBUG: Simular esquinas"
-          >
-            <Ionicons name="bug" size={18} color="#fff" />
-          </TouchableOpacity>
         </View>
 
         {/* bola central animada simple y efectiva */}
@@ -1247,14 +1268,24 @@ export default function Game() {
       {showGameSummary && (
         <GameSummaryModal
           visible={showGameSummary}
-          players={state.players}
-          figuresClaimed={state.figuresClaimed}
+          players={state.players} // Siempre usar la lista actual de jugadores
+          figuresClaimed={
+            gameSummaryData?.figuresClaimed || state.figuresClaimed
+          }
           playersReady={playersReady}
           me={me}
           onClose={() => {
+            // Cuando la partida terminó, salir directamente sin mostrar modal de confirmación
+            setIsExitingFromSummary(true);
             handleHideModal("gameresumen");
-            // Ir directamente a gameSelect sin mostrar ExitModal (partida ya terminó)
-            router.replace("/gameSelect");
+            socket.emit("leaveRoom");
+            clearBalls(); // Limpiar bolas al salir
+
+            // Navegar después de configurar el estado y resetear la bandera después
+            setTimeout(() => {
+              router.replace("/gameSelect");
+              setIsExitingFromSummary(false);
+            }, 100);
           }}
           onPlayAgain={() => {
             // Marcar jugador como listo para nueva partida
@@ -1418,6 +1449,62 @@ export default function Game() {
         onClose={() => setChatVisible(false)}
         onSendMessage={handleSendMessage}
       />
+
+      {/* Contador 3-2-1 */}
+      {countdown && (
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.8)",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000000,
+          }}
+        >
+          <View
+            style={{
+              width: 200,
+              height: 200,
+              borderRadius: 100,
+              backgroundColor: "#e74c3c",
+              alignItems: "center",
+              justifyContent: "center",
+              shadowColor: "#000",
+              shadowOpacity: 0.3,
+              shadowRadius: 10,
+              shadowOffset: { width: 0, height: 5 },
+              elevation: 10,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 80,
+                fontWeight: "800",
+                color: "#fff",
+                fontFamily: "Montserrat_700Bold",
+              }}
+            >
+              {countdown}
+            </Text>
+          </View>
+          <Text
+            style={{
+              marginTop: 30,
+              fontSize: 24,
+              fontWeight: "700",
+              color: "#fff",
+              textAlign: "center",
+              fontFamily: "Montserrat_700Bold",
+            }}
+          >
+            ¡Preparándose!
+          </Text>
+        </View>
+      )}
 
       {/* 🐛 DEBUG PANEL - Solo para testing */}
       <View
