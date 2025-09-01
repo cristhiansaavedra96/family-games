@@ -113,6 +113,19 @@ export default function Waiting() {
     socket.emit("configure", { roomId, cardsPerPlayer: n });
   };
 
+  // Ordenar jugadores con el anfitrión primero
+  const sortedPlayers = useMemo(() => {
+    if (!state.players || state.players.length === 0) return [];
+
+    return [...state.players].sort((a, b) => {
+      // El anfitrión siempre va primero
+      if (a.id === state.hostId) return -1;
+      if (b.id === state.hostId) return 1;
+      // Mantener orden original para el resto
+      return 0;
+    });
+  }, [state.players, state.hostId]);
+
   // Función para salir de la sala
   const leaveRoom = () => {
     // Emitir evento al servidor para salir de la sala
@@ -378,72 +391,87 @@ export default function Waiting() {
           >
             {/* Content */}
             <View style={{ padding: 16 }}>
-              {/* Host Controls */}
-              {isHost && (
-                <View
+              {/* Game Configuration - Visible para todos */}
+              <View
+                style={{
+                  backgroundColor: "#fff",
+                  borderRadius: 16,
+                  padding: 16,
+                  marginBottom: 16,
+                  shadowColor: "#000",
+                  shadowOpacity: 0.08,
+                  shadowRadius: 12,
+                  shadowOffset: { width: 0, height: 4 },
+                  elevation: 6,
+                }}
+              >
+                <Text
                   style={{
-                    backgroundColor: "#fff",
-                    borderRadius: 16,
-                    padding: 16,
-                    marginBottom: 16,
-                    shadowColor: "#000",
-                    shadowOpacity: 0.08,
-                    shadowRadius: 12,
-                    shadowOffset: { width: 0, height: 4 },
-                    elevation: 6,
+                    fontSize: 18,
+                    fontWeight: "700",
+                    color: "#2c3e50",
+                    marginBottom: 12,
                   }}
                 >
-                  <Text
-                    style={{
-                      fontSize: 18,
-                      fontWeight: "700",
-                      color: "#2c3e50",
-                      marginBottom: 12,
-                    }}
-                  >
-                    Configuración del juego
-                  </Text>
+                  Configuración del juego
+                </Text>
 
+                <Text
+                  style={{
+                    fontSize: 14,
+                    fontWeight: "600",
+                    color: "#7f8c8d",
+                    marginBottom: 8,
+                  }}
+                >
+                  Cartones por jugador:
+                </Text>
+
+                <View style={{ flexDirection: "row", marginBottom: 16 }}>
+                  {[1, 2, 3, 4].map((n) => (
+                    <TouchableOpacity
+                      disabled={changingCards || !isHost} // Solo el anfitrión puede cambiar
+                      key={n}
+                      onPress={() => isHost && setCards(n)} // Solo el anfitrión puede ejecutar
+                      style={{
+                        backgroundColor:
+                          state.cardsPerPlayer === n ? "#e74c3c" : "#ecf0f1",
+                        paddingVertical: 8,
+                        paddingHorizontal: 16,
+                        borderRadius: 8,
+                        marginRight: 8,
+                        opacity: changingCards || !isHost ? 0.6 : 1,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            state.cardsPerPlayer === n ? "white" : "#7f8c8d",
+                          fontWeight: "600",
+                        }}
+                      >
+                        {n}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Mostrar información adicional para jugadores no anfitriones */}
+                {!isHost && (
                   <Text
                     style={{
-                      fontSize: 14,
-                      fontWeight: "600",
+                      fontSize: 12,
                       color: "#7f8c8d",
+                      fontStyle: "italic",
                       marginBottom: 8,
                     }}
                   >
-                    Cartones por jugador:
+                    Solo el anfitrión puede modificar la configuración
                   </Text>
+                )}
 
-                  <View style={{ flexDirection: "row", marginBottom: 16 }}>
-                    {[1, 2, 3, 4].map((n) => (
-                      <TouchableOpacity
-                        disabled={changingCards}
-                        key={n}
-                        onPress={() => setCards(n)}
-                        style={{
-                          backgroundColor:
-                            state.cardsPerPlayer === n ? "#e74c3c" : "#ecf0f1",
-                          paddingVertical: 8,
-                          paddingHorizontal: 16,
-                          borderRadius: 8,
-                          marginRight: 8,
-                          opacity: changingCards ? 0.6 : 1,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            color:
-                              state.cardsPerPlayer === n ? "white" : "#7f8c8d",
-                            fontWeight: "600",
-                          }}
-                        >
-                          {n}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
+                {/* Botón de iniciar - Solo para anfitrión */}
+                {isHost && (
                   <TouchableOpacity
                     onPress={start}
                     style={{
@@ -469,8 +497,42 @@ export default function Waiting() {
                       </Text>
                     </View>
                   </TouchableOpacity>
-                </View>
-              )}
+                )}
+
+                {/* Mensaje para jugadores no anfitriones */}
+                {!isHost && (
+                  <View
+                    style={{
+                      backgroundColor: "#f8f9fa",
+                      borderRadius: 12,
+                      paddingVertical: 16,
+                      alignItems: "center",
+                      borderWidth: 1,
+                      borderColor: "#e9ecef",
+                    }}
+                  >
+                    <View
+                      style={{ flexDirection: "row", alignItems: "center" }}
+                    >
+                      <Ionicons
+                        name="hourglass-outline"
+                        size={24}
+                        color="#7f8c8d"
+                      />
+                      <Text
+                        style={{
+                          color: "#7f8c8d",
+                          fontSize: 16,
+                          fontWeight: "600",
+                          marginLeft: 8,
+                        }}
+                      >
+                        Esperando al anfitrión
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
 
               {/* Players List */}
               <View
@@ -498,7 +560,7 @@ export default function Waiting() {
                 </Text>
 
                 <FlatList
-                  data={state.players}
+                  data={sortedPlayers} // Usar la lista ordenada
                   keyExtractor={(item) => item.id}
                   renderItem={renderPlayer}
                   scrollEnabled={false}
