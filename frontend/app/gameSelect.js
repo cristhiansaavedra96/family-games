@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { getAvailableGames } from "../src/games/registry";
+import { getAvailableGames, getGameInfo } from "../src/games/registry";
 import { useStorage } from "../src/shared/hooks";
 
 export default function Games() {
@@ -31,8 +31,16 @@ export default function Games() {
   const games = getAvailableGames();
 
   const selectGame = (gameId) => {
+    //if game has property "disabled" in true, return
+    const game = getGameInfo(gameId);
+    if (game && game.disabled) {
+      return;
+    }
+
     if (gameId === "bingo") {
-      router.push("/rooms");
+      router.push({ pathname: "/rooms", params: { gameType: "bingo" } });
+    } else if (gameId === "truco") {
+      router.push({ pathname: "/rooms", params: { gameType: "truco" } });
     }
     // Aquí se pueden agregar más juegos en el futuro
   };
@@ -132,18 +140,20 @@ export default function Games() {
                     key={game.id}
                     onPress={() => selectGame(game.id)}
                     style={{
-                      backgroundColor: "#fff",
+                      backgroundColor: game.disabled ? "#f0f0f0" : "#fff",
                       borderRadius: 24,
                       padding: 24,
                       shadowColor: "#000",
-                      shadowOpacity: 0.12,
+                      shadowOpacity: game.disabled ? 0.05 : 0.12,
                       shadowRadius: 16,
                       shadowOffset: { width: 0, height: 8 },
-                      elevation: 10,
+                      elevation: game.disabled ? 2 : 10,
                       borderWidth: 1,
                       borderColor: "rgba(44, 62, 80, 0.08)",
+                      opacity: game.disabled ? 0.6 : 1,
                     }}
-                    activeOpacity={0.7}
+                    activeOpacity={game.disabled ? 1 : 0.7} // Desactiva feedback si está bloqueado
+                    disabled={game.disabled} // Desactiva el click
                   >
                     <View
                       style={{ flexDirection: "row", alignItems: "center" }}
@@ -154,18 +164,24 @@ export default function Games() {
                           width: 70,
                           height: 70,
                           borderRadius: 35,
-                          backgroundColor: game.color,
+                          backgroundColor: game.disabled
+                            ? "#bdc3c7"
+                            : game.color,
                           alignItems: "center",
                           justifyContent: "center",
                           marginRight: 20,
                           shadowColor: game.color,
-                          shadowOpacity: 0.3,
+                          shadowOpacity: game.disabled ? 0 : 0.3,
                           shadowRadius: 8,
                           shadowOffset: { width: 0, height: 4 },
-                          elevation: 6,
+                          elevation: game.disabled ? 0 : 6,
                         }}
                       >
-                        <Ionicons name={game.icon} size={32} color="white" />
+                        <Ionicons
+                          name={game.icon}
+                          size={32}
+                          color={game.disabled ? "#ecf0f1" : "white"}
+                        />
                       </View>
 
                       {/* Game Info */}
@@ -174,43 +190,59 @@ export default function Games() {
                           style={{
                             fontSize: 26,
                             fontWeight: "800",
-                            color: "#2c3e50",
+                            color: game.disabled ? "#7f8c8d" : "#2c3e50",
                             marginBottom: 6,
                             fontFamily: "Montserrat_800ExtraBold",
                           }}
                         >
                           {game.name}
                         </Text>
-                        <Text
-                          style={{
-                            fontSize: 15,
-                            color: "#7f8c8d",
-                            lineHeight: 22,
-                            fontFamily: "Montserrat_500Medium",
-                          }}
-                        >
-                          {game.description}
-                        </Text>
+                        {game.disabled ? (
+                          <Text
+                            style={{
+                              fontSize: 15,
+                              color: "#95a5a6",
+                              lineHeight: 22,
+                              fontFamily: "Montserrat_500Medium",
+                              fontStyle: "italic",
+                            }}
+                          >
+                            Próximamente
+                          </Text>
+                        ) : (
+                          <Text
+                            style={{
+                              fontSize: 15,
+                              color: "#7f8c8d",
+                              lineHeight: 22,
+                              fontFamily: "Montserrat_500Medium",
+                            }}
+                          >
+                            {game.description}
+                          </Text>
+                        )}
                       </View>
 
-                      {/* Arrow indicator */}
-                      <View
-                        style={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: 20,
-                          backgroundColor: "rgba(44, 62, 80, 0.08)",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          marginLeft: 12,
-                        }}
-                      >
-                        <Ionicons
-                          name="arrow-forward"
-                          size={20}
-                          color="#2c3e50"
-                        />
-                      </View>
+                      {/* Arrow indicator (solo si NO está deshabilitado) */}
+                      {!game.disabled && (
+                        <View
+                          style={{
+                            width: 40,
+                            height: 40,
+                            borderRadius: 20,
+                            backgroundColor: "rgba(44, 62, 80, 0.08)",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            marginLeft: 12,
+                          }}
+                        >
+                          <Ionicons
+                            name="arrow-forward"
+                            size={20}
+                            color="#2c3e50"
+                          />
+                        </View>
+                      )}
                     </View>
                   </TouchableOpacity>
                 ))}

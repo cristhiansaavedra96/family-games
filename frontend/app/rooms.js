@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { View, FlatList, TouchableOpacity, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { getUsername } from "../src/shared/utils";
 import * as FileSystem from "expo-file-system";
@@ -21,6 +21,9 @@ import {
 } from "../src/core/storage";
 
 export default function Rooms() {
+  const params = useLocalSearchParams();
+  const gameType = params.gameType || "bingo"; // Por defecto bingo para compatibilidad
+
   const [rooms, setRooms] = useState([]);
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
   const [joiningRoomId, setJoiningRoomId] = useState(null);
@@ -60,7 +63,9 @@ export default function Rooms() {
 
   useEffect(() => {
     const onRooms = (list) => {
-      setRooms(list);
+      // Filtrar salas por tipo de juego
+      const filteredRooms = list.filter((room) => room.gameKey === gameType);
+      setRooms(filteredRooms);
     };
     socket.on("rooms", onRooms);
     socket.emit("listRooms");
@@ -99,7 +104,7 @@ export default function Rooms() {
       setIsCreatingRoom(false);
       setJoiningRoomId(null);
     };
-  }, [setLocalAvatarUrl]);
+  }, [setLocalAvatarUrl, gameType]); // Agregar gameType como dependencia
 
   // Limpiar estados de loading al desmontarse
   useEffect(() => {
@@ -121,8 +126,10 @@ export default function Rooms() {
         socket.emit("joinRoom", { roomId, player: { name, username } });
         socket.once("joined", ({ roomId: joinedRoomId }) => {
           setJoiningRoomId(null);
-          // Ir directamente al juego en lugar de la sala de espera
-          router.push(`/games/bingo/${joinedRoomId}`);
+          // Ir directamente al juego usando la ruta dinámica
+          const room = rooms.find((r) => r.id === joinedRoomId);
+          const gameKey = room?.gameKey || gameType;
+          router.push(getGameRoute(gameKey, joinedRoomId));
         });
       } else {
         // Flujo normal para salas que no han empezado
@@ -136,13 +143,17 @@ export default function Rooms() {
               pathname: "/waiting",
               params: {
                 roomId: joinedRoomId,
+                gameType: gameType,
                 initialState: JSON.stringify(room),
               },
             });
           } else {
             router.push({
               pathname: "/waiting",
-              params: { roomId: joinedRoomId },
+              params: {
+                roomId: joinedRoomId,
+                gameType: gameType,
+              },
             });
           }
         });
@@ -168,12 +179,18 @@ export default function Rooms() {
       // No enviar avatar - el servidor lo obtiene de la BD
       socket.emit("createRoom", {
         player: { name, username },
-        gameKey: "bingo",
+        gameKey: gameType, // Usar el tipo de juego dinámico
       });
 
       socket.once("joined", ({ roomId }) => {
         setIsCreatingRoom(false);
-        router.push({ pathname: "/waiting", params: { roomId } });
+        router.push({
+          pathname: "/waiting",
+          params: {
+            roomId,
+            gameType: gameType,
+          },
+        });
       });
 
       // Timeout de seguridad
@@ -184,6 +201,20 @@ export default function Rooms() {
       console.error("Error creating room:", error);
       setIsCreatingRoom(false);
     }
+  };
+
+  const getGameDisplayName = (gameKey) => {
+    const gameNames = {
+      bingo: "Bingo",
+      truco: "Truco Uruguayo",
+    };
+    return (
+      gameNames[gameKey] || gameKey.charAt(0).toUpperCase() + gameKey.slice(1)
+    );
+  };
+
+  const getGameRoute = (gameKey, roomId) => {
+    return `/games/${gameKey}/${roomId}`;
   };
 
   const refreshRooms = () => {
@@ -539,7 +570,7 @@ export default function Rooms() {
                     marginBottom: 10,
                   }}
                 >
-                  Salas de Bingo
+                  Salas de {getGameDisplayName(gameType)}
                 </Typography>
                 <Typography
                   variant="body"

@@ -125,19 +125,36 @@ function broadcastRoomState(roomId) {
   const gameState = gameHandler ? gameHandler.getPublicState() : {};
   const fullConfig = gameHandler ? gameHandler.getFullConfig() : room.config;
 
-  io.to(roomId).emit("state", {
+  console.log(
+    `📡 [Backend] Broadcasting room state - Room: ${roomId}, GameKey: ${
+      room.gameKey
+    }, GameHandler exists: ${!!gameHandler}`
+  );
+  if (gameHandler && room.gameKey === "truco") {
+    console.log(
+      `🎯 [Backend] Truco game state keys: ${Object.keys(gameState).join(", ")}`
+    );
+  }
+
+  const stateToSend = {
     roomId,
     name: room.name,
     gameKey: room.gameKey,
     hostId: room.hostId,
     players: publicPlayers,
-    // Configuración completa (sala + juego específico)
-    ...fullConfig,
-    // Estado del juego
-    ...gameState,
     gameEnded: room.gameEnded,
     playersReady: Array.from(room.playersReady),
-  });
+    // Configuración completa (sala + juego específico)
+    ...fullConfig,
+    // Estado del juego (debe tener prioridad)
+    ...gameState,
+  };
+
+  console.log(
+    `📡 [Backend] Final state to send - currentPlayerSocketId: ${stateToSend.currentPlayerSocketId}, gamePhase: ${stateToSend.gamePhase}`
+  );
+
+  io.to(roomId).emit("state", stateToSend);
 }
 
 // Verificar si todos los jugadores están listos para nueva partida
@@ -262,6 +279,15 @@ io.on("connection", (socket) => {
   socket.on("resumeDraw", gameFlowHandlers.resumeDraw(socket));
   socket.on("nextBall", gameFlowHandlers.nextBall(socket));
   socket.on("claim", gameFlowHandlers.claim(socket));
+
+  // 🃏 Eventos específicos del Truco
+  socket.on("playCard", roomHandlers.playCard(socket));
+  socket.on("envido", roomHandlers.envido(socket));
+  socket.on("envidoResponse", roomHandlers.envidoResponse(socket));
+  socket.on("skipEnvido", roomHandlers.skipEnvido(socket));
+  socket.on("truco", roomHandlers.truco(socket));
+  socket.on("trucoResponse", roomHandlers.trucoResponse(socket));
+  socket.on("requestPrivateHand", roomHandlers.requestPrivateHand(socket));
 
   // 📊 Eventos de Estadísticas y Perfiles
   socket.on("getStats", statsHandlers.getStats(socket));

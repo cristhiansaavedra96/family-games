@@ -45,7 +45,7 @@ function createRoomHandlers({
         let avatarId = null;
 
         // Validar que el tipo de juego sea válido
-        const validGameKeys = ["bingo"]; // Aquí se pueden agregar más juegos en el futuro
+        const validGameKeys = ["bingo", "truco"]; // Agregar truco como juego válido
         const selectedGameKey =
           gameKey && validGameKeys.includes(gameKey) ? gameKey : "bingo";
 
@@ -97,7 +97,29 @@ function createRoomHandlers({
       (socket) =>
       async ({ roomId, player }) => {
         const room = roomsManager.getRoom(roomId);
-        if (!room) return;
+        if (!room) {
+          socket.emit("joinError", { reason: "room_not_found" });
+          return;
+        }
+
+        // Verificar límite máximo de jugadores para la sala
+        const gameHandler = getGameHandler(roomId);
+        const gameConfig = gameHandler ? gameHandler.getGameConfig() : {};
+        const maxPlayers = gameConfig.maxPlayers || 6; // Por defecto 6 jugadores máximo
+
+        // Contar jugadores actuales (sin contar al jugador que se está uniendo si ya está)
+        const currentPlayerCount = room.players.has(socket.id)
+          ? room.players.size
+          : room.players.size + 1;
+
+        if (currentPlayerCount > maxPlayers) {
+          socket.emit("joinError", {
+            reason: "room_full",
+            maxPlayers: maxPlayers,
+            currentCount: room.players.size,
+          });
+          return;
+        }
 
         // Asegurar que el jugador salga de cualquier sala anterior (excepto la que está tratando de unirse)
         ensurePlayerInSingleRoom(socket, roomId);
@@ -176,6 +198,402 @@ function createRoomHandlers({
           checkAllPlayersReady(room);
         }
       },
+
+    // Reclamación de figura
+    claim:
+      (socket) =>
+      ({ roomId, figure, cardIndex, marked, debugMode }) => {
+        try {
+          const rid = roomId || socket.data.roomId;
+
+          if (!rid) {
+            console.error("Error: No roomId available");
+            socket.emit("claimResult", { ok: false, reason: "no_room_id" });
+            return;
+          }
+
+          const gameHandler = getGameHandler(rid);
+          if (!gameHandler) {
+            console.error("Error: No game handler available");
+            socket.emit("claimResult", {
+              ok: false,
+              reason: "no_game_handler",
+            });
+            return;
+          }
+
+          const res = figure
+            ? gameHandler.checkClaim(
+                socket.id,
+                figure,
+                cardIndex,
+                marked,
+                require("../services/statsService"),
+                require("../core/datastore").getDataStore(),
+                !!debugMode
+              )
+            : gameHandler.autoClaim(
+                socket.id,
+                cardIndex,
+                marked,
+                require("../services/statsService"),
+                require("../core/datastore").getDataStore(),
+                !!debugMode
+              );
+
+          socket.emit("claimResult", res);
+
+          if (res.ok && res.gameEnded) {
+            broadcastRoomState(rid);
+          }
+        } catch (error) {
+          console.error("Error procesando claim:", error);
+          socket.emit("claimResult", { ok: false, reason: "server_error" });
+        }
+      },
+
+    // Obtener estado de la sala
+    getState:
+      (socket) =>
+      ({ roomId }) => {
+        const room = roomsManager.getRoom(roomId || socket.data.roomId);
+        if (!room) return;
+
+        const publicPlayers = Array.from(room.players.entries()).map(
+          ([sid, p]) => ({
+            id: sid,
+            name: p.name,
+            avatarId: p.avatarId,
+            username: p.username,
+            cards: p.cards,
+          })
+        );
+
+        // Obtener el estado específico del juego
+        const gameHandler = getGameHandler(room.id);
+        const gameState = gameHandler ? gameHandler.getPublicState() : {};
+        const fullConfig = gameHandler
+          ? gameHandler.getFullConfig()
+          : room.config;
+
+        socket.emit("state", {
+          roomId: room.id,
+          name: room.name,
+          gameKey: room.gameKey,
+          hostId: room.hostId,
+          players: publicPlayers,
+          // Configuración completa (sala + juego específico)
+          ...fullConfig,
+          // Estado del juego
+          ...gameState,
+          gameEnded: room.gameEnded,
+          playersReady: Array.from(room.playersReady),
+        });
+      },
+
+    // ========== TRUCO HANDLERS ==========
+
+    // Jugar carta
+    playCard:
+      (socket) =>
+      ({ roomId, cardId }) => {
+        try {
+          const rid = roomId || socket.data.roomId;
+          if (!rid) {
+            socket.emit("playCardResult", { ok: false, reason: "no_room_id" });
+            return;
+          }
+
+          const gameHandler = getGameHandler(rid);
+          if (!gameHandler || !gameHandler.playCard) {
+            socket.emit("playCardResult", {
+              ok: false,
+              reason: "no_game_handler",
+            });
+            return;
+          }
+
+          const result = gameHandler.playCard(socket.id, cardId);
+          socket.emit("playCardResult", result);
+
+          if (result.ok) {
+            broadcastRoomState(rid);
+          }
+        } catch (error) {
+          console.error("Error playing card:", error);
+          socket.emit("playCardResult", { ok: false, reason: "server_error" });
+        }
+      },
+
+    // Re-enviar mano privada bajo demanda
+    requestPrivateHand:
+      (socket) =>
+      ({ roomId }) => {
+        try {
+          const rid = roomId || socket.data.roomId;
+          if (!rid) return;
+
+          const gameHandler = getGameHandler(rid);
+          if (!gameHandler || !gameHandler.sendPrivateHands) return;
+
+          // Solo si el juego está iniciado
+          if (gameHandler.gameState?.started) {
+            gameHandler.sendPrivateHands();
+          }
+        } catch (error) {
+          console.error("Error requesting private hand:", error);
+        }
+      },
+
+    // Cantar envido
+    envido:
+      (socket) =>
+      ({ roomId, type = "envido" }) => {
+        try {
+          const rid = roomId || socket.data.roomId;
+          if (!rid) {
+            socket.emit("envidoResult", { ok: false, reason: "no_room_id" });
+            return;
+          }
+
+          const gameHandler = getGameHandler(rid);
+          if (!gameHandler || !gameHandler.declareEnvido) {
+            socket.emit("envidoResult", {
+              ok: false,
+              reason: "no_game_handler",
+            });
+            return;
+          }
+
+          const result = gameHandler.declareEnvido(socket.id, type);
+          socket.emit("envidoResult", result);
+
+          if (result.ok) {
+            broadcastRoomState(rid);
+          }
+        } catch (error) {
+          console.error("Error declaring envido:", error);
+          socket.emit("envidoResult", { ok: false, reason: "server_error" });
+        }
+      },
+
+    // Declarar Flor
+    flor:
+      (socket) =>
+      ({ roomId }) => {
+        try {
+          const rid = roomId || socket.data.roomId;
+          if (!rid) {
+            socket.emit("florResult", { ok: false, reason: "no_room_id" });
+            return;
+          }
+
+          const gameHandler = getGameHandler(rid);
+          if (!gameHandler || !gameHandler.declareFlor) {
+            socket.emit("florResult", {
+              ok: false,
+              reason: "no_game_handler",
+            });
+            return;
+          }
+
+          const result = gameHandler.declareFlor(socket.id);
+          socket.emit("florResult", result);
+
+          if (result.ok) {
+            broadcastRoomState(rid);
+          }
+        } catch (error) {
+          console.error("Error declaring flor:", error);
+          socket.emit("florResult", { ok: false, reason: "server_error" });
+        }
+      },
+
+    // Declarar ContraFlor
+    contraflor:
+      (socket) =>
+      ({ roomId }) => {
+        try {
+          const rid = roomId || socket.data.roomId;
+          if (!rid) {
+            socket.emit("contraflorResult", {
+              ok: false,
+              reason: "no_room_id",
+            });
+            return;
+          }
+
+          const gameHandler = getGameHandler(rid);
+          if (!gameHandler || !gameHandler.declareContraFlor) {
+            socket.emit("contraflorResult", {
+              ok: false,
+              reason: "no_game_handler",
+            });
+            return;
+          }
+
+          const result = gameHandler.declareContraFlor(socket.id);
+          socket.emit("contraflorResult", result);
+
+          if (result.ok) {
+            broadcastRoomState(rid);
+          }
+        } catch (error) {
+          console.error("Error declaring contraflor:", error);
+          socket.emit("contraflorResult", {
+            ok: false,
+            reason: "server_error",
+          });
+        }
+      },
+
+    // Responder al envido
+    envidoResponse:
+      (socket) =>
+      ({ roomId, response }) => {
+        try {
+          const rid = roomId || socket.data.roomId;
+          if (!rid) {
+            socket.emit("envidoResponseResult", {
+              ok: false,
+              reason: "no_room_id",
+            });
+            return;
+          }
+
+          const gameHandler = getGameHandler(rid);
+          if (!gameHandler || !gameHandler.respondEnvido) {
+            socket.emit("envidoResponseResult", {
+              ok: false,
+              reason: "no_game_handler",
+            });
+            return;
+          }
+
+          const result = gameHandler.respondEnvido(socket.id, response);
+          socket.emit("envidoResponseResult", result);
+
+          if (result.ok) {
+            broadcastRoomState(rid);
+          }
+        } catch (error) {
+          console.error("Error responding to envido:", error);
+          socket.emit("envidoResponseResult", {
+            ok: false,
+            reason: "server_error",
+          });
+        }
+      },
+
+    // No querer envido (pasar)
+    skipEnvido:
+      (socket) =>
+      ({ roomId }) => {
+        try {
+          const rid = roomId || socket.data.roomId;
+          if (!rid) {
+            socket.emit("skipEnvidoResult", {
+              ok: false,
+              reason: "no_room_id",
+            });
+            return;
+          }
+
+          const gameHandler = getGameHandler(rid);
+          if (!gameHandler || !gameHandler.skipEnvido) {
+            socket.emit("skipEnvidoResult", {
+              ok: false,
+              reason: "no_game_handler",
+            });
+            return;
+          }
+
+          const result = gameHandler.skipEnvido(socket.id);
+          socket.emit("skipEnvidoResult", result);
+
+          if (result.ok) {
+            broadcastRoomState(rid);
+          }
+        } catch (error) {
+          console.error("Error skipping envido:", error);
+          socket.emit("skipEnvidoResult", {
+            ok: false,
+            reason: "server_error",
+          });
+        }
+      },
+
+    // Cantar truco
+    truco:
+      (socket) =>
+      (data = {}) => {
+        try {
+          const { roomId } = data;
+          const rid = roomId || socket.data.roomId;
+          if (!rid) {
+            socket.emit("trucoResult", { ok: false, reason: "no_room_id" });
+            return;
+          }
+
+          const gameHandler = getGameHandler(rid);
+          if (!gameHandler || !gameHandler.declareTruco) {
+            socket.emit("trucoResult", {
+              ok: false,
+              reason: "no_game_handler",
+            });
+            return;
+          }
+
+          const result = gameHandler.declareTruco(socket.id);
+          socket.emit("trucoResult", result);
+
+          if (result.ok) {
+            broadcastRoomState(rid);
+          }
+        } catch (error) {
+          console.error("Error declaring truco:", error);
+          socket.emit("trucoResult", { ok: false, reason: "server_error" });
+        }
+      },
+
+    // Responder al truco
+    trucoResponse:
+      (socket) =>
+      (data = {}) => {
+        try {
+          const { roomId, response } = data;
+          const rid = roomId || socket.data.roomId;
+          if (!rid) {
+            socket.emit("trucoResponseResult", {
+              ok: false,
+              reason: "no_room_id",
+            });
+            return;
+          }
+
+          const gameHandler = getGameHandler(rid);
+          if (!gameHandler || !gameHandler.respondTruco) {
+            socket.emit("trucoResponseResult", {
+              ok: false,
+              reason: "no_game_handler",
+            });
+            return;
+          }
+
+          const result = gameHandler.respondTruco(socket.id, response);
+          socket.emit("trucoResponseResult", result);
+
+          if (result.ok) {
+            broadcastRoomState(rid);
+          }
+        } catch (error) {
+          console.error("Error responding to truco:", error);
+          socket.emit("trucoResponseResult", {
+            ok: false,
+            reason: "server_error",
+          });
+        }
+      },
   };
 }
 
@@ -232,12 +650,24 @@ function createGameFlowHandlers({
       (socket) =>
       ({ roomId }) => {
         const room = roomsManager.getRoom(roomId || socket.data.roomId);
-        if (!room || room.hostId !== socket.id) return;
+        if (!room || room.hostId !== socket.id) {
+          socket.emit("startGameError", { reason: "not_host_or_no_room" });
+          return;
+        }
 
         const gameHandler = getGameHandler(room.id);
         if (gameHandler) {
-          gameHandler.startGame();
-          broadcastRoomState(room.id);
+          const started = gameHandler.startGame();
+          if (started !== false) {
+            broadcastRoomState(room.id);
+          } else {
+            // El gameHandler devolvió false, enviar error específico
+            socket.emit("startGameError", {
+              reason: "insufficient_players",
+              gameType: room.gameKey,
+              currentPlayers: room.players.size,
+            });
+          }
         }
       },
 
@@ -379,6 +809,148 @@ function createGameFlowHandlers({
           gameEnded: room.gameEnded,
           playersReady: Array.from(room.playersReady),
         });
+      },
+
+    // ========== TRUCO HANDLERS ==========
+
+    // Jugar carta
+    playCard:
+      (socket) =>
+      ({ roomId, cardId }) => {
+        try {
+          const rid = roomId || socket.data.roomId;
+          if (!rid) {
+            socket.emit("playCardResult", { ok: false, reason: "no_room_id" });
+            return;
+          }
+
+          const gameHandler = getGameHandler(rid);
+          if (!gameHandler || !gameHandler.playCard) {
+            socket.emit("playCardResult", {
+              ok: false,
+              reason: "no_game_handler",
+            });
+            return;
+          }
+
+          const result = gameHandler.playCard(socket.id, cardId);
+          socket.emit("playCardResult", result);
+
+          if (result.ok) {
+            broadcastRoomState(rid);
+          }
+        } catch (error) {
+          console.error("Error playing card:", error);
+          socket.emit("playCardResult", { ok: false, reason: "server_error" });
+        }
+      },
+
+    // Cantar envido
+    envido:
+      (socket) =>
+      ({ roomId, type = "envido" }) => {
+        try {
+          const rid = roomId || socket.data.roomId;
+          if (!rid) {
+            socket.emit("envidoResult", { ok: false, reason: "no_room_id" });
+            return;
+          }
+
+          const gameHandler = getGameHandler(rid);
+          if (!gameHandler || !gameHandler.declareEnvido) {
+            socket.emit("envidoResult", {
+              ok: false,
+              reason: "no_game_handler",
+            });
+            return;
+          }
+
+          const result = gameHandler.declareEnvido(socket.id, type);
+          socket.emit("envidoResult", result);
+
+          if (result.ok) {
+            broadcastRoomState(rid);
+          }
+        } catch (error) {
+          console.error("Error declaring envido:", error);
+          socket.emit("envidoResult", { ok: false, reason: "server_error" });
+        }
+      },
+
+    // Responder al envido
+    envidoResponse:
+      (socket) =>
+      ({ roomId, response }) => {
+        try {
+          const rid = roomId || socket.data.roomId;
+          if (!rid) {
+            socket.emit("envidoResponseResult", {
+              ok: false,
+              reason: "no_room_id",
+            });
+            return;
+          }
+
+          const gameHandler = getGameHandler(rid);
+          if (!gameHandler || !gameHandler.respondEnvido) {
+            socket.emit("envidoResponseResult", {
+              ok: false,
+              reason: "no_game_handler",
+            });
+            return;
+          }
+
+          const result = gameHandler.respondEnvido(socket.id, response);
+          socket.emit("envidoResponseResult", result);
+
+          if (result.ok) {
+            broadcastRoomState(rid);
+          }
+        } catch (error) {
+          console.error("Error responding to envido:", error);
+          socket.emit("envidoResponseResult", {
+            ok: false,
+            reason: "server_error",
+          });
+        }
+      },
+
+    // No querer envido (pasar)
+    skipEnvido:
+      (socket) =>
+      ({ roomId }) => {
+        try {
+          const rid = roomId || socket.data.roomId;
+          if (!rid) {
+            socket.emit("skipEnvidoResult", {
+              ok: false,
+              reason: "no_room_id",
+            });
+            return;
+          }
+
+          const gameHandler = getGameHandler(rid);
+          if (!gameHandler || !gameHandler.skipEnvido) {
+            socket.emit("skipEnvidoResult", {
+              ok: false,
+              reason: "no_game_handler",
+            });
+            return;
+          }
+
+          const result = gameHandler.skipEnvido(socket.id);
+          socket.emit("skipEnvidoResult", result);
+
+          if (result.ok) {
+            broadcastRoomState(rid);
+          }
+        } catch (error) {
+          console.error("Error skipping envido:", error);
+          socket.emit("skipEnvidoResult", {
+            ok: false,
+            reason: "server_error",
+          });
+        }
       },
   };
 }

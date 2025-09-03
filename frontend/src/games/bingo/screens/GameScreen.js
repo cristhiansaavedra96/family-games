@@ -37,6 +37,8 @@ import {
 } from "../components";
 import { useBingoUiStore } from "../stores";
 
+const SHOW_DEBUG = false;
+
 export default function Game() {
   const insets = useSafeAreaInsets();
   const { socket, isConnected, socketId } = useSocket(); // 🆕 Usar el hook
@@ -1506,73 +1508,74 @@ export default function Game() {
         </View>
       )}
 
-      {/* 🐛 DEBUG PANEL - Solo para testing */}
-      <View
-        style={{
-          position: "absolute",
-          bottom: insets.bottom + 10,
-          left: 10,
-          right: 10,
-          backgroundColor: "rgba(231, 76, 60, 0.9)",
-          borderRadius: 8,
-          padding: 8,
-          flexDirection: "row",
-          justifyContent: "space-around",
-          alignItems: "center",
-          shadowColor: "#000",
-          shadowOpacity: 0.2,
-          shadowRadius: 4,
-          shadowOffset: { width: 0, height: 2 },
-          elevation: 5,
-        }}
-      >
-        <Text
+      {SHOW_DEBUG && (
+        <View
           style={{
-            color: "#fff",
-            fontSize: 10,
-            fontWeight: "bold",
-            fontFamily: "Montserrat_700Bold",
-            marginBottom: 4,
+            position: "absolute",
+            bottom: insets.bottom + 10,
+            left: 10,
+            right: 10,
+            backgroundColor: "rgba(231, 76, 60, 0.9)",
+            borderRadius: 8,
+            padding: 8,
+            flexDirection: "row",
+            justifyContent: "space-around",
+            alignItems: "center",
+            shadowColor: "#000",
+            shadowOpacity: 0.2,
+            shadowRadius: 4,
+            shadowOffset: { width: 0, height: 2 },
+            elevation: 5,
           }}
         >
-          🐛 DEBUG
-        </Text>
-        {[
-          { key: "corners", label: "Esquinas" },
-          { key: "row", label: "Línea" },
-          { key: "column", label: "Columna" },
-          { key: "diagonal", label: "Diagonal" },
-          { key: "border", label: "Borde" },
-          { key: "full", label: "BINGO!" },
-        ].map((item) => (
-          <TouchableOpacity
-            key={item.key}
-            onPress={() => debugClaimFigure(item.key)}
-            disabled={isClaiming}
+          <Text
             style={{
-              backgroundColor: state.figuresClaimed[item.key]
-                ? "rgba(255, 255, 255, 0.3)"
-                : "rgba(255, 255, 255, 0.8)",
-              paddingHorizontal: 6,
-              paddingVertical: 4,
-              borderRadius: 4,
-              minWidth: 50,
-              alignItems: "center",
+              color: "#fff",
+              fontSize: 10,
+              fontWeight: "bold",
+              fontFamily: "Montserrat_700Bold",
+              marginBottom: 4,
             }}
           >
-            <Text
+            🐛 DEBUG
+          </Text>
+          {[
+            { key: "corners", label: "Esquinas" },
+            { key: "row", label: "Línea" },
+            { key: "column", label: "Columna" },
+            { key: "diagonal", label: "Diagonal" },
+            { key: "border", label: "Borde" },
+            { key: "full", label: "BINGO!" },
+          ].map((item) => (
+            <TouchableOpacity
+              key={item.key}
+              onPress={() => debugClaimFigure(item.key)}
+              disabled={isClaiming}
               style={{
-                color: state.figuresClaimed[item.key] ? "#ccc" : "#e74c3c",
-                fontSize: 8,
-                fontWeight: "bold",
-                fontFamily: "Montserrat_600SemiBold",
+                backgroundColor: state.figuresClaimed[item.key]
+                  ? "rgba(255, 255, 255, 0.3)"
+                  : "rgba(255, 255, 255, 0.8)",
+                paddingHorizontal: 6,
+                paddingVertical: 4,
+                borderRadius: 4,
+                minWidth: 50,
+                alignItems: "center",
               }}
             >
-              {item.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+              <Text
+                style={{
+                  color: state.figuresClaimed[item.key] ? "#ccc" : "#e74c3c",
+                  fontSize: 8,
+                  fontWeight: "bold",
+                  fontFamily: "Montserrat_600SemiBold",
+                }}
+              >
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
     </>
   );
 }

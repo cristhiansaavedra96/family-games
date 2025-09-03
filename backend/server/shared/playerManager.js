@@ -37,7 +37,16 @@ async function syncPlayerWithDatabase(username, name, avatarUrl) {
     console.warn("Error syncing player with database:", e);
   }
 
-  return { player: { username, name, avatarUrl }, avatarId };
+  return {
+    player: {
+      username,
+      name,
+      avatarUrl: avatarUrl
+        ? `[avatar-${(avatarUrl.length / 1024).toFixed(1)}KB]`
+        : null,
+    },
+    avatarId,
+  };
 }
 
 /**

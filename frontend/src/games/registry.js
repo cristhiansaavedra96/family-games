@@ -34,6 +34,28 @@ export const AVAILABLE_GAMES = {
       defaultSpeed: 1,
     },
   },
+  truco: {
+    id: "truco",
+    name: "TRUCO",
+    description: "Truco Uruguayo",
+    icon: "diamond",
+    color: "#27ae60",
+    available: true,
+    minPlayers: 2,
+    maxPlayers: 4,
+    disabled: true,
+    // Rutas
+    routes: {
+      rooms: "/rooms", // Para seleccionar sala
+      game: "/games/truco/[roomId]", // Pantalla del juego con roomId dinámico
+    },
+    // Configuración específica
+    config: {
+      maxCards: 3,
+      suits: ["espada", "oro", "copa", "basto"],
+      values: [1, 2, 3, 4, 5, 6, 7, 10, 11, 12],
+    },
+  },
   // Futuras expansiones:
   // poker: {
   //   id: 'poker',

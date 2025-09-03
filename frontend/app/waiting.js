@@ -19,7 +19,7 @@ import { Button } from "../src/shared/components/ui";
 const { width } = Dimensions.get("window");
 
 export default function Waiting() {
-  const { roomId, initialState } = useLocalSearchParams();
+  const { roomId, gameType = "bingo", initialState } = useLocalSearchParams();
   const { socket, isConnected, socketId } = useSocket(); // 🆕 Usar el hook
   // Si initialState viene como string, parsear una sola vez
   const parsedInitial = useMemo(() => {
@@ -49,6 +49,22 @@ export default function Waiting() {
   const { syncPlayers, getAvatarUrl, clearMemoryCache } = useAvatarSync();
   const [changingCards, setChangingCards] = useState(false);
 
+  // Función para obtener la ruta del juego según el tipo
+  const getGameRoute = (gameKey, roomId) => {
+    return `/games/${gameKey}/${roomId}`;
+  };
+
+  // Función para obtener el nombre del juego
+  const getGameDisplayName = (gameKey) => {
+    const gameNames = {
+      bingo: "Bingo",
+      truco: "Truco Uruguayo",
+    };
+    return (
+      gameNames[gameKey] || gameKey.charAt(0).toUpperCase() + gameKey.slice(1)
+    );
+  };
+
   // También limpiar memoria al desmontar:
   useEffect(() => {
     return () => {
@@ -67,8 +83,18 @@ export default function Waiting() {
     };
     // Función onState optimizada:
     const onState = (s) => {
+      //console.log("🎮 Estado recibido en waiting:", s);
       if (s.roomId === roomId) {
-        setState(s);
+        // Asegurar que players siempre sea un array
+        const safeState = {
+          ...s,
+          players: s.players || [],
+        };
+        console.log(
+          "🔄 Actualizando estado con players count:",
+          safeState.players?.length || 0
+        );
+        setState(safeState);
         setChangingCards(false);
 
         // Siempre cargar avatares cuando llegue estado (desde caché o descarga)
@@ -81,7 +107,7 @@ export default function Waiting() {
       }
 
       if (s.started) {
-        router.replace(`/games/bingo/${roomId}`);
+        router.replace(getGameRoute(gameType, roomId));
       }
     };
 
@@ -146,7 +172,7 @@ export default function Waiting() {
 
   const handleSendMessage = (messageData) => {
     // Encontrar datos del jugador actual
-    const currentPlayer = state.players.find((p) => p.id === me);
+    const currentPlayer = state.players?.find((p) => p.id === me);
     if (!currentPlayer) return;
 
     const fullMessage = {
@@ -386,7 +412,7 @@ export default function Waiting() {
                   fontFamily: "Montserrat_400Regular",
                 }}
               >
-                Esperando jugadores...
+                {getGameDisplayName(gameType)} - Esperando jugadores...
               </Text>
             </View>
           </View>
@@ -398,136 +424,226 @@ export default function Waiting() {
           >
             {/* Content */}
             <View style={{ padding: 16 }}>
-              {/* Game Configuration - Visible para todos */}
-              <View
-                style={{
-                  backgroundColor: "#fff",
-                  borderRadius: 16,
-                  padding: 16,
-                  marginBottom: 16,
-                  shadowColor: "#000",
-                  shadowOpacity: 0.08,
-                  shadowRadius: 12,
-                  shadowOffset: { width: 0, height: 4 },
-                  elevation: 6,
-                }}
-              >
-                <Text
+              {/* Game Configuration - Para Bingo y Truco */}
+              {(gameType === "bingo" || gameType === "truco") && (
+                <View
                   style={{
-                    fontSize: 18,
-                    fontWeight: "700",
-                    color: "#2c3e50",
-                    marginBottom: 12,
+                    backgroundColor: "#fff",
+                    borderRadius: 16,
+                    padding: 16,
+                    marginBottom: 16,
+                    shadowColor: "#000",
+                    shadowOpacity: 0.08,
+                    shadowRadius: 12,
+                    shadowOffset: { width: 0, height: 4 },
+                    elevation: 6,
                   }}
                 >
-                  Configuración del juego
-                </Text>
-
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontWeight: "600",
-                    color: "#7f8c8d",
-                    marginBottom: 8,
-                  }}
-                >
-                  Cartones por jugador:
-                </Text>
-
-                <View style={{ flexDirection: "row", marginBottom: 16 }}>
-                  {[1, 2, 3, 4].map((n) => (
-                    <TouchableOpacity
-                      disabled={changingCards || !isHost} // Solo el anfitrión puede cambiar
-                      key={n}
-                      onPress={() => isHost && setCards(n)} // Solo el anfitrión puede ejecutar
-                      style={{
-                        backgroundColor:
-                          state.cardsPerPlayer === n ? "#e74c3c" : "#ecf0f1",
-                        paddingVertical: 8,
-                        paddingHorizontal: 16,
-                        borderRadius: 8,
-                        marginRight: 8,
-                        opacity: changingCards || !isHost ? 0.6 : 1,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          color:
-                            state.cardsPerPlayer === n ? "white" : "#7f8c8d",
-                          fontWeight: "600",
-                        }}
-                      >
-                        {n}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                {/* Mostrar información adicional para jugadores no anfitriones */}
-                {!isHost && (
                   <Text
                     style={{
-                      fontSize: 12,
-                      color: "#7f8c8d",
-                      fontStyle: "italic",
-                      marginBottom: 8,
+                      fontSize: 18,
+                      fontWeight: "700",
+                      color: "#2c3e50",
+                      marginBottom: 12,
                     }}
                   >
-                    Solo el anfitrión puede modificar la configuración
+                    Configuración del juego
                   </Text>
-                )}
 
-                {/* Botón de iniciar - Solo para anfitrión */}
-                {isHost && (
-                  <Button
-                    title="Iniciar Juego"
-                    onPress={start}
-                    variant="primary"
-                    size="large"
-                    icon={
-                      <Ionicons name="play-circle" size={24} color="white" />
-                    }
-                    style={{
-                      backgroundColor: "#27ae60",
-                      borderRadius: 12,
-                    }}
-                  />
-                )}
-
-                {/* Mensaje para jugadores no anfitriones */}
-                {!isHost && (
-                  <View
-                    style={{
-                      backgroundColor: "#f8f9fa",
-                      borderRadius: 12,
-                      paddingVertical: 16,
-                      alignItems: "center",
-                      borderWidth: 1,
-                      borderColor: "#e9ecef",
-                    }}
-                  >
-                    <View
-                      style={{ flexDirection: "row", alignItems: "center" }}
-                    >
-                      <Ionicons
-                        name="hourglass-outline"
-                        size={24}
-                        color="#7f8c8d"
-                      />
+                  {/* Configuración específica para Bingo */}
+                  {gameType === "bingo" && (
+                    <>
                       <Text
                         style={{
-                          color: "#7f8c8d",
-                          fontSize: 16,
+                          fontSize: 14,
                           fontWeight: "600",
-                          marginLeft: 8,
+                          color: "#7f8c8d",
+                          marginBottom: 8,
                         }}
                       >
-                        Esperando al anfitrión
+                        Cartones por jugador:
                       </Text>
+
+                      <View style={{ flexDirection: "row", marginBottom: 16 }}>
+                        {[1, 2, 3, 4].map((n) => (
+                          <TouchableOpacity
+                            disabled={changingCards || !isHost} // Solo el anfitrión puede cambiar
+                            key={n}
+                            onPress={() => isHost && setCards(n)} // Solo el anfitrión puede ejecutar
+                            style={{
+                              backgroundColor:
+                                state.cardsPerPlayer === n
+                                  ? "#e74c3c"
+                                  : "#ecf0f1",
+                              paddingVertical: 8,
+                              paddingHorizontal: 16,
+                              borderRadius: 8,
+                              marginRight: 8,
+                              opacity: changingCards || !isHost ? 0.6 : 1,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                color:
+                                  state.cardsPerPlayer === n
+                                    ? "white"
+                                    : "#7f8c8d",
+                                fontWeight: "600",
+                              }}
+                            >
+                              {n}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </>
+                  )}
+
+                  {/* Configuración específica para Truco */}
+                  {gameType === "truco" && (
+                    <>
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          fontWeight: "600",
+                          color: "#7f8c8d",
+                          marginBottom: 8,
+                        }}
+                      >
+                        Modalidad: Truco Uruguayo (1 vs 1)
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          color: "#95a5a6",
+                          marginBottom: 16,
+                          lineHeight: 18,
+                        }}
+                      >
+                        • Se juega a 30 puntos
+                        {"\n"}• Cada jugador recibe 3 cartas por mano
+                        {"\n"}• Incluye Envido, Truco y Flor
+                      </Text>
+                    </>
+                  )}
+
+                  {/* Mostrar información adicional para jugadores no anfitriones */}
+                  {!isHost && (
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: "#7f8c8d",
+                        fontStyle: "italic",
+                        marginBottom: 8,
+                      }}
+                    >
+                      Solo el anfitrión puede iniciar la partida
+                    </Text>
+                  )}
+
+                  {/* Botón de iniciar - Solo para anfitrión */}
+                  {isHost && (
+                    <>
+                      {/* Verificar condiciones para iniciar */}
+                      {gameType === "bingo" ? (
+                        <Button
+                          title="Iniciar Juego"
+                          onPress={start}
+                          variant="primary"
+                          size="large"
+                          icon={
+                            <Ionicons
+                              name="play-circle"
+                              size={24}
+                              color="white"
+                            />
+                          }
+                          style={{
+                            backgroundColor: "#27ae60",
+                            borderRadius: 12,
+                          }}
+                        />
+                      ) : gameType === "truco" ? (
+                        <Button
+                          title="Iniciar Truco"
+                          onPress={start}
+                          variant="primary"
+                          size="large"
+                          disabled={state.players?.length !== 2}
+                          icon={
+                            <Ionicons
+                              name={
+                                state.players?.length === 2
+                                  ? "play-circle"
+                                  : "people"
+                              }
+                              size={24}
+                              color="white"
+                            />
+                          }
+                          style={{
+                            backgroundColor:
+                              state.players?.length === 2
+                                ? "#e74c3c"
+                                : "#95a5a6",
+                            borderRadius: 12,
+                            opacity: state.players?.length === 2 ? 1 : 0.7,
+                          }}
+                        />
+                      ) : null}
+
+                      {/* Mensaje de estado para Truco */}
+                      {gameType === "truco" && state.players?.length !== 2 && (
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            color: "#e67e22",
+                            textAlign: "center",
+                            marginTop: 8,
+                            fontWeight: "600",
+                          }}
+                        >
+                          Se necesitan exactamente 2 jugadores para iniciar
+                        </Text>
+                      )}
+                    </>
+                  )}
+
+                  {/* Mensaje para jugadores no anfitriones */}
+                  {!isHost && (
+                    <View
+                      style={{
+                        backgroundColor: "#f8f9fa",
+                        borderRadius: 12,
+                        paddingVertical: 16,
+                        alignItems: "center",
+                        borderWidth: 1,
+                        borderColor: "#e9ecef",
+                      }}
+                    >
+                      <View
+                        style={{ flexDirection: "row", alignItems: "center" }}
+                      >
+                        <Ionicons
+                          name="hourglass-outline"
+                          size={24}
+                          color="#7f8c8d"
+                        />
+                        <Text
+                          style={{
+                            color: "#7f8c8d",
+                            fontSize: 16,
+                            fontWeight: "600",
+                            marginLeft: 8,
+                          }}
+                        >
+                          Esperando al anfitrión
+                        </Text>
+                      </View>
                     </View>
-                  </View>
-                )}
-              </View>
+                  )}
+                </View>
+              )}
 
               {/* Players List */}
               <View
@@ -551,7 +667,7 @@ export default function Waiting() {
                     marginBottom: 16,
                   }}
                 >
-                  Jugadores ({state.players.length})
+                  Jugadores ({state.players?.length || 0})
                 </Text>
 
                 <FlatList
