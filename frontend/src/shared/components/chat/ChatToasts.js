@@ -4,7 +4,11 @@ import ChatToastItem from "./ChatToastItem";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAvatarSync } from "../../hooks";
 
-export default function ChatToasts({ messages, onItemComplete }) {
+export default function ChatToasts({
+  messages,
+  onItemComplete,
+  extraContainerStyle,
+}) {
   const insets = useSafeAreaInsets();
   const { syncAvatar } = useAvatarSync();
 
@@ -32,6 +36,7 @@ export default function ChatToasts({ messages, onItemComplete }) {
         alignItems: "flex-end",
         paddingHorizontal: 16,
         zIndex: 10000,
+        ...(extraContainerStyle || {}),
       }}
     >
       {messages.map((m) => (

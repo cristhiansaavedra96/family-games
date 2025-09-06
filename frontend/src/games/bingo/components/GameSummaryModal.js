@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, ScrollView, TouchableOpacity, Image } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import Modal from "../../../shared/components/ui/Modal";
 import Typography from "../../../shared/components/ui/Typography";
 import Button from "../../../shared/components/ui/Button";
+import { ChatPanel } from "../../../shared/components";
 
 const GameSummaryModal = ({
   visible,
@@ -13,23 +14,21 @@ const GameSummaryModal = ({
   me,
   onClose,
   onPlayAgain,
+  onSendMessage,
 }) => {
-  // Función para calcular puntos según las figuras reclamadas
+  const [chatVisible, setChatVisible] = useState(false);
+
   const calculatePoints = (playerFigures) => {
     let points = 0;
     playerFigures.forEach((figure) => {
-      if (figure === "full") {
-        points += 5;
-      } else if (figure === "border") {
-        points += 3;
-      } else if (["column", "row", "diagonal", "corners"].includes(figure)) {
+      if (figure === "full") points += 5;
+      else if (figure === "border") points += 3;
+      else if (["column", "row", "diagonal", "corners"].includes(figure))
         points += 1;
-      }
     });
     return points;
   };
 
-  // Calcular datos de jugadores con puntos y ordenar
   const playersWithPoints =
     players
       ?.map((player) => {
@@ -38,16 +37,14 @@ const GameSummaryModal = ({
         );
         const points = calculatePoints(playerFigures);
         const hasCartonLleno = playerFigures.includes("full");
-
         return {
           ...player,
           figures: playerFigures,
-          points: points,
+          points,
           isWinner: hasCartonLleno,
         };
       })
       .sort((a, b) => {
-        // Primero por cartón lleno, luego por puntos
         if (a.isWinner && !b.isWinner) return -1;
         if (!a.isWinner && b.isWinner) return 1;
         return b.points - a.points;
@@ -58,26 +55,22 @@ const GameSummaryModal = ({
   const renderPlayerItem = (player, index) => {
     const isReady = playersReady[player.id];
     const isWinnerCard = player.isWinner;
-
-    // Colores para ranking similar al leaderboard
-    let badgeColor = "#8f5cff"; // púrpura eléctrico
+    let badgeColor = "#8f5cff";
     let badgeShadow = "#3d246c";
     let borderBottom = "#8f5cff";
     if (index === 0) {
       badgeColor = "#d7263d";
       badgeShadow = "#7c1622";
       borderBottom = "#d7263d";
-    } // rojo oscuro
-    else if (index === 1) {
+    } else if (index === 1) {
       badgeColor = "#00bfff";
       badgeShadow = "#005f87";
       borderBottom = "#00bfff";
-    } // azul eléctrico
-    else if (index === 2) {
+    } else if (index === 2) {
       badgeColor = "#e0e0e0";
       badgeShadow = "#888";
       borderBottom = "#e0e0e0";
-    } // gris claro
+    }
 
     return (
       <View
@@ -136,13 +129,7 @@ const GameSummaryModal = ({
                 name="crown"
                 size={16}
                 color="#ffd700"
-                style={{
-                  position: "absolute",
-                  top: -8,
-                  right: -8,
-                  textShadowColor: "#ff1744",
-                  textShadowRadius: 6,
-                }}
+                style={{ position: "absolute", top: -8, right: -8 }}
               />
             )}
           </View>
@@ -177,10 +164,7 @@ const GameSummaryModal = ({
           >
             <Typography
               variant="heading3"
-              style={{
-                color: "#fff",
-                fontWeight: "700",
-              }}
+              style={{ color: "#fff", fontWeight: "700" }}
             >
               {player?.name?.[0]?.toUpperCase() ||
                 player?.username?.[0]?.toUpperCase() ||
@@ -206,10 +190,7 @@ const GameSummaryModal = ({
           </Typography>
           <Typography
             variant="caption"
-            style={{
-              color: "#ff1744",
-              marginBottom: 1,
-            }}
+            style={{ color: "#ff1744", marginBottom: 1 }}
             numberOfLines={1}
             ellipsizeMode="tail"
           >
@@ -223,9 +204,7 @@ const GameSummaryModal = ({
           </Typography>
           <Typography
             variant="caption"
-            style={{
-              color: "#e0e0e0",
-            }}
+            style={{ color: "#e0e0e0" }}
             numberOfLines={1}
             ellipsizeMode="tail"
           >
@@ -260,10 +239,7 @@ const GameSummaryModal = ({
           >
             <Typography
               variant="caption"
-              style={{
-                color: "white",
-                fontWeight: "600",
-              }}
+              style={{ color: "white", fontWeight: "600" }}
             >
               Listo
             </Typography>
@@ -281,12 +257,8 @@ const GameSummaryModal = ({
       showCloseButton={false}
       closeOnBackdropPress={false}
       backgroundColor="rgba(0,0,0,0.9)"
-      contentStyle={{
-        backgroundColor: "#e6ecf5",
-        flex: 1,
-      }}
+      contentStyle={{ backgroundColor: "#e6ecf5", flex: 1 }}
     >
-      {/* Header con ganador prominente */}
       <View
         style={{
           backgroundColor: "#2c3e50",
@@ -308,30 +280,19 @@ const GameSummaryModal = ({
             />
             <Typography
               variant="heading2"
-              style={{
-                color: "#fff",
-                textAlign: "center",
-                marginBottom: 5,
-              }}
+              style={{ color: "#fff", textAlign: "center", marginBottom: 5 }}
             >
               🎉 ¡GANADOR! 🎉
             </Typography>
             <Typography
               variant="heading3"
-              style={{
-                color: "#ffd700",
-                textAlign: "center",
-                marginBottom: 5,
-              }}
+              style={{ color: "#ffd700", textAlign: "center", marginBottom: 5 }}
             >
               {winner.name || winner.username}
             </Typography>
             <Typography
               variant="body"
-              style={{
-                color: "#e0e0e0",
-                textAlign: "center",
-              }}
+              style={{ color: "#e0e0e0", textAlign: "center" }}
             >
               Cartón lleno • {winner.points} puntos
             </Typography>
@@ -340,20 +301,13 @@ const GameSummaryModal = ({
           <View style={{ alignItems: "center" }}>
             <Typography
               variant="heading3"
-              style={{
-                color: "#fff",
-                textAlign: "center",
-              }}
+              style={{ color: "#fff", textAlign: "center" }}
             >
               🎯 Resumen del Juego
             </Typography>
             <Typography
               variant="body"
-              style={{
-                color: "#e0e0e0",
-                textAlign: "center",
-                marginTop: 5,
-              }}
+              style={{ color: "#e0e0e0", textAlign: "center", marginTop: 5 }}
             >
               Sin ganador de cartón lleno
             </Typography>
@@ -361,7 +315,6 @@ const GameSummaryModal = ({
         )}
       </View>
 
-      {/* Lista de jugadores estilo ranking */}
       <View
         style={{
           backgroundColor: "#e6ecf5",
@@ -377,7 +330,6 @@ const GameSummaryModal = ({
         </ScrollView>
       </View>
 
-      {/* Botones de acción */}
       <View
         style={{
           backgroundColor: "#e6ecf5",
@@ -396,7 +348,6 @@ const GameSummaryModal = ({
           style={{ flex: 1 }}
           leftIcon={<Ionicons name="exit-outline" size={18} color="#fff" />}
         />
-
         <Button
           title={playersReady[me] ? "Esperando..." : "Volver a Jugar"}
           variant={playersReady[me] ? "secondary" : "success"}
@@ -413,6 +364,38 @@ const GameSummaryModal = ({
           }
         />
       </View>
+
+      <TouchableOpacity
+        onPress={() => setChatVisible(true)}
+        style={{
+          position: "absolute",
+          right: 20,
+          bottom: 32 + 64,
+          width: 56,
+          height: 56,
+          borderRadius: 28,
+          backgroundColor: "#3498db",
+          alignItems: "center",
+          justifyContent: "center",
+          shadowColor: "#000",
+          shadowOpacity: 0.2,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 6,
+        }}
+        activeOpacity={0.85}
+      >
+        <Ionicons name="chatbubbles" size={24} color="#fff" />
+      </TouchableOpacity>
+
+      <ChatPanel
+        isVisible={chatVisible}
+        onClose={() => setChatVisible(false)}
+        onSendMessage={(msg) => {
+          onSendMessage && onSendMessage(msg);
+          setChatVisible(false);
+        }}
+      />
     </Modal>
   );
 };

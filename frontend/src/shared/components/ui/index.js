@@ -8,6 +8,8 @@ export { default as LoadingSpinner } from "./LoadingSpinner";
 export { default as Modal } from "./Modal";
 export { default as Toast } from "./Toast";
 export { default as Typography } from "./Typography";
+export { default as ConfirmModal } from "../modals/ConfirmModal";
+export { default as KickedModal } from "../modals/KickedModal";
 
 // Próximos componentes en desarrollo:
 // export { Avatar } from './Avatar';

@@ -4,7 +4,7 @@ import Constants from "expo-constants";
 export const APP_CONFIG = {
   // URL del servidor - prioriza la configuración local para desarrollo
   SERVER_URL:
-    //"192.168.0.10:4000" ||
+    "192.168.0.10:4000" ||
     "https://familygames.duckdns.org" ||
     Constants.expoConfig?.extra?.EXPO_PUBLIC_API_URL ||
     "https://family-games-backend-production.up.railway.app",

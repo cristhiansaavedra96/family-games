@@ -254,6 +254,7 @@ const disconnectHandler = createDisconnectHandler({
   cleanupGameHandler,
   broadcastRoomState,
   broadcastRoomsList,
+  io,
 });
 
 io.on("connection", (socket) => {
@@ -266,6 +267,7 @@ io.on("connection", (socket) => {
   socket.on("createRoom", roomHandlers.createRoom(socket));
   socket.on("joinRoom", roomHandlers.joinRoom(socket));
   socket.on("leaveRoom", roomHandlers.leaveRoom(socket));
+  socket.on("kickPlayer", roomHandlers.kickPlayer(socket));
   socket.on("readyForNewGame", roomHandlers.readyForNewGame(socket));
 
   // 🎮 Eventos de Flujo del Juego

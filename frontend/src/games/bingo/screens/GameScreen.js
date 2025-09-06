@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { AppState } from "react-native";
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
-  Modal,
   BackHandler,
   Image,
   InteractionManager,
@@ -34,10 +34,13 @@ import {
   ExitModal,
   NumbersModal,
   SpeedSelectModal,
+  PlayersModal,
 } from "../components";
 import { useBingoUiStore } from "../stores";
 
-const SHOW_DEBUG = false;
+const SHOW_DEBUG = true;
+// Duración máxima de gracia extendida (ms) - mantener en sync con backend si se cambia
+const EXTENDED_BACKGROUND_GRACE_MS = 5 * 60 * 1000;
 
 export default function Game() {
   const insets = useSafeAreaInsets();
@@ -84,7 +87,12 @@ export default function Game() {
   const [chatVisible, setChatVisible] = useState(false);
   const [currentMessage, setCurrentMessage] = useState(null); // deprecated, mantenido temporalmente
   const [toastMessages, setToastMessages] = useState([]);
+  const appStateRef = useRef(AppState.currentState);
+  const wentBackgroundAtRef = useRef(null);
   const [showSpeedSelect, setShowSpeedSelect] = useState(false);
+  const [showPlayersModal, setShowPlayersModal] = useState(false);
+  // Cache local de figuras reclamadas para persistir avatar/nombre aunque el jugador salga
+  const figuresCacheRef = useRef({}); // key -> {playerId, name, username, avatarId}
 
   const {
     startBackground,
@@ -104,6 +112,84 @@ export default function Game() {
   const previousPlayersRef = useRef([]);
 
   useEffect(() => {
+    // Listener de AppState para enviar eventos de background/foreground
+    const sub = AppState.addEventListener("change", (nextState) => {
+      const prev = appStateRef.current;
+      appStateRef.current = nextState;
+      if (!socket) return;
+      if (
+        (prev === "active" || prev === "inactive") &&
+        nextState === "background"
+      ) {
+        wentBackgroundAtRef.current = Date.now();
+        socket.emit("appBackground");
+      } else if (prev === "background" && nextState === "active") {
+        const diff = Date.now() - (wentBackgroundAtRef.current || Date.now());
+        wentBackgroundAtRef.current = null;
+        socket.emit("appForeground", { timeAwayMs: diff });
+        // Al volver al foreground pedir estado para refrescar hostId inmediatamente
+        if (params.roomId) {
+          socket.emit("getState", { roomId: params.roomId });
+        }
+      }
+    });
+    return () => {
+      sub?.remove?.();
+    };
+  }, [socket]);
+
+  const lastIdentityRef = useRef({ username: null, name: null });
+
+  // Auto rejoin en reconexión para preservar host si el username coincide
+  useEffect(() => {
+    if (!socket) return;
+    const lastAttemptRef = { current: 0 };
+    const tryRejoin = async () => {
+      if (!params.roomId) return;
+      if (Date.now() - lastAttemptRef.current < 1000) return;
+      lastAttemptRef.current = Date.now();
+      // Usar datos del jugador local si existen
+      const mePlayer = state.players?.find((p) => p.id === me);
+      let username =
+        mePlayer?.username || myUsername || lastIdentityRef.current.username;
+      let name = mePlayer?.name || myName || lastIdentityRef.current.name;
+      if (!username) {
+        try {
+          username = await getUsername();
+        } catch {}
+      }
+      if (!name) {
+        try {
+          name = await loadItem("profile:name");
+        } catch {}
+      }
+      if (username) lastIdentityRef.current.username = username;
+      if (name) lastIdentityRef.current.name = name;
+      socket.emit("joinRoom", {
+        roomId: params.roomId,
+        player: { username, name },
+      });
+      socket.emit("getState", { roomId: params.roomId });
+    };
+    const onConnect = tryRejoin;
+    const onReconnect = tryRejoin;
+    socket.on("connect", onConnect);
+    socket.on("reconnect", onReconnect);
+    return () => {
+      socket.off("connect", onConnect);
+      socket.off("reconnect", onReconnect);
+    };
+  }, [socket, params.roomId, state.players, me, myUsername, myName]);
+
+  // Estilo extra para ChatToasts cuando el resumen está activo (asegurar capa superior)
+  const chatToastsExtraStyle = showGameSummary
+    ? { zIndex: 3000000, elevation: 3000000 }
+    : null;
+
+  // Registrar listeners principales del socket
+  useEffect(() => {
+    if (!socket) return;
+
     socket.on("state", (s) => {
       setState(s);
 
@@ -191,6 +277,25 @@ export default function Game() {
         syncAvatar(payload.playerUsername, payload.playerAvatarId);
       }
 
+      // Guardar en cache datos del jugador que reclamó figuras
+      try {
+        if (payload?.playerId && (payload?.figures || []).length > 0) {
+          const playerExisting = (state.players || []).find(
+            (pl) => pl.id === payload.playerId
+          );
+          const data = {
+            playerId: payload.playerId,
+            name: payload.playerName || playerExisting?.name || "",
+            username: payload.playerUsername || playerExisting?.username || "",
+            avatarId:
+              payload.playerAvatarId || playerExisting?.avatarId || null,
+          };
+          (payload.figures || []).forEach((f) => {
+            figuresCacheRef.current[f] = data;
+          });
+        }
+      } catch {}
+
       // Asegurar que los anuncios se muestren de a UNO
       // Forzar que 'full' (cartón lleno) vaya siempre al final del grupo (particionado estable)
       if (
@@ -250,8 +355,9 @@ export default function Game() {
       socket.off("gameOver");
       socket.off("joined");
       socket.off("announcement");
+      socket.off("claimResult");
     };
-  }, []);
+  }, [socket, params.roomId, socketId]);
 
   // Música de fondo: iniciar al entrar, detener al salir
   useEffect(() => {
@@ -293,7 +399,7 @@ export default function Game() {
     }
   }, [playersReady, state.players, showGameSummary, countdown, startCountdown]);
 
-  // Resetear flag de inicio cuando se detecta una nueva partida (sin bolillas)
+  // Resetear flag de inicio cuando se detecta una nueva partida (sin bolillas) y limpiar UI
   useEffect(() => {
     if (
       Array.isArray(state.drawn) &&
@@ -301,6 +407,11 @@ export default function Game() {
       state.lastBall === null
     ) {
       hasGameStartedRef.current = false;
+      // Limpiar UI de bolas y marcas locales al comenzar juego nuevo
+      try {
+        clearBalls();
+      } catch {}
+      setLocalMarks({});
     }
   }, [state.drawn?.length, state.lastBall]);
 
@@ -311,11 +422,39 @@ export default function Game() {
       const withId = { ...messageData, id };
       setToastMessages((prev) => [...prev, withId].slice(-4));
     };
+    const onPlayerDisconnected = (payload) => {
+      if (!payload) return;
+      const id = `disc-${payload.playerId}-${Date.now()}`;
+      let reasonText = "se desconectó";
+      if (payload.reason === "left") reasonText = "salió de la sala";
+      else if (payload.reason === "kick") reasonText = "fue expulsado";
+      else if (payload.reason === "timeout") reasonText = "perdió la conexión";
+      // ChatToastItem ya muestra el nombre del jugador; solo necesitamos la acción.
+      const text = reasonText;
+      const toast = {
+        id,
+        type: "system-disconnect",
+        content: text,
+        player: payload.username
+          ? {
+              id: payload.playerId,
+              name: payload.name,
+              username: payload.username,
+              avatarId: payload.avatarId,
+            }
+          : null,
+        meta: { reason: payload.reason },
+        timestamp: payload.timestamp || Date.now(),
+      };
+      setToastMessages((prev) => [...prev, toast].slice(-4));
+    };
 
     socket.on("chatMessage", onChatMessage);
+    socket.on("playerDisconnected", onPlayerDisconnected);
 
     return () => {
       socket.off("chatMessage", onChatMessage);
+      socket.off("playerDisconnected", onPlayerDisconnected);
     };
   }, []);
 
@@ -843,7 +982,7 @@ export default function Game() {
           <View style={{ width: 44, height: 44 }} />
         </View>
 
-        {/* Segunda fila absoluta: Música y Efectos lado a lado, no empuja el bolillero */}
+        {/* Segunda fila absoluta: Música y Efectos */}
         <View
           style={{
             position: "absolute",
@@ -900,6 +1039,38 @@ export default function Game() {
               size={20}
               color={effectsMuted ? "#95a5a6" : "#2c3e50"}
             />
+          </TouchableOpacity>
+        </View>
+
+        {/* Tercera fila: botón jugadores */}
+        <View
+          style={{
+            position: "absolute",
+            left: 16,
+            top: (insets.top || 0) + 4 + 44 + 8 + 40 + 8, // debajo de fila 2
+            zIndex: 2,
+            flexDirection: "row",
+            alignItems: "center",
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => setShowPlayersModal(true)}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: "#fff",
+              alignItems: "center",
+              justifyContent: "center",
+              shadowColor: "#000",
+              shadowOpacity: 0.1,
+              shadowRadius: 4,
+              shadowOffset: { width: 0, height: 2 },
+              elevation: 3,
+            }}
+            accessibilityLabel="Mostrar jugadores"
+          >
+            <Ionicons name="people" size={22} color="#2c3e50" />
           </TouchableOpacity>
         </View>
 
@@ -1297,6 +1468,7 @@ export default function Game() {
               roomId: state.roomId || params.roomId,
             });
           }}
+          onSendMessage={handleSendMessage}
         />
       )}
 
@@ -1363,79 +1535,134 @@ export default function Game() {
       <View
         style={{
           position: "absolute",
-          right: 8,
-          top: (insets.top || 0) + 6,
+          right: 4,
+          top: (insets.top || 0) + 4,
           alignItems: "flex-end",
         }}
       >
-        {["corners", "row", "column", "diagonal", "border", "full"].map(
-          (key) => {
+        {(() => {
+          const order = [
+            "corners",
+            "row",
+            "column",
+            "diagonal",
+            "border",
+            "full",
+          ];
+          const iconMap = {
+            corners: "grid",
+            row: "reorder-three",
+            column: "swap-vertical",
+            diagonal: "trending-up",
+            border: "crop",
+            full: "trophy",
+          };
+          const colorMap = {
+            corners: "#8e44ad",
+            row: "#27ae60",
+            column: "#2980b9",
+            diagonal: "#d35400",
+            border: "#16a085",
+            full: "#e74c3c",
+          };
+          return order.map((key) => {
             const pid = state.figuresClaimed?.[key];
             if (!pid) return null;
             const p = (state.players || []).find((pp) => pp.id === pid);
-            const labelMap = {
-              corners: "Esq",
-              row: "Lín",
-              column: "Col",
-              diagonal: "Diag",
-              border: "Contorno",
-              full: "Lleno",
-            };
+            const cached = figuresCacheRef.current[key];
+            const data = p || cached || null;
+            // Si no hay cache aún, guardarlo ahora (primer render con p)
+            if (!cached && p) {
+              figuresCacheRef.current[key] = {
+                playerId: p.id,
+                name: p.name,
+                username: p.username,
+                avatarId: p.avatarId,
+              };
+            }
+            const avatarUri = data?.avatarId && getAvatarUrl(data.username);
+            const baseColor = colorMap[key] || "#34495e";
             return (
               <View
                 key={key}
                 style={{
                   flexDirection: "row",
-                  backgroundColor: "rgba(255,255,255,0.9)",
-                  paddingVertical: 4,
-                  paddingHorizontal: 8,
-                  borderRadius: 12,
-                  marginBottom: 4,
                   alignItems: "center",
+                  backgroundColor: "rgba(255,255,255,0.9)",
+                  borderRadius: 10,
+                  paddingVertical: 3,
+                  paddingHorizontal: 4,
+                  marginBottom: 3,
+                  shadowColor: "#000",
+                  shadowOpacity: 0.12,
+                  shadowRadius: 3,
+                  shadowOffset: { width: 0, height: 2 },
+                  elevation: 3,
                 }}
               >
-                {p?.avatarId && getAvatarUrl(p.username) ? (
-                  <View
+                <View
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    backgroundColor: baseColor,
+                    justifyContent: "center",
+                    alignItems: "center",
+                    marginRight: 4,
+                  }}
+                >
+                  <Ionicons
+                    name={iconMap[key] || "star"}
+                    size={10}
+                    color="#fff"
+                  />
+                </View>
+                {avatarUri ? (
+                  <Image
+                    source={{ uri: avatarUri }}
                     style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 9,
-                      marginRight: 6,
+                      width: 20,
+                      height: 20,
+                      borderRadius: 10,
+                      marginRight: 4,
+                      borderWidth: 1,
+                      borderColor: baseColor + "88",
                     }}
-                  >
-                    <Image
-                      source={{ uri: getAvatarUrl(p.username) }}
-                      style={{ width: 18, height: 18, borderRadius: 9 }}
-                    />
-                  </View>
+                  />
                 ) : (
                   <View
                     style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 9,
-                      marginRight: 6,
-                      backgroundColor: "#f0f0f0",
+                      width: 20,
+                      height: 20,
+                      borderRadius: 10,
+                      backgroundColor: baseColor + "22",
                       justifyContent: "center",
                       alignItems: "center",
+                      marginRight: 4,
+                      borderWidth: 1,
+                      borderColor: baseColor + "55",
                     }}
                   >
-                    <Text style={{ fontSize: 10, color: "#666" }}>👤</Text>
+                    <Text style={{ fontSize: 10 }}>👤</Text>
                   </View>
                 )}
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontWeight: "bold",
-                    fontFamily: "Montserrat_700Bold",
-                  }}
-                >
-                  {labelMap[key]}: {p?.name || ""}
-                </Text>
+                {!!data?.name && (
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: "600",
+                      color: "#2c3e50",
+                      maxWidth: 70,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {data.name}
+                  </Text>
+                )}
               </View>
             );
-          }
-        )}
+          });
+        })()}
       </View>
       {/* === FIN SECCIÓN DE MODALES === */}
 
@@ -1443,6 +1670,7 @@ export default function Game() {
       <ChatToasts
         messages={toastMessages}
         onItemComplete={handleToastComplete}
+        extraContainerStyle={chatToastsExtraStyle}
       />
 
       {/* Chat Panel */}
@@ -1576,6 +1804,15 @@ export default function Game() {
           ))}
         </View>
       )}
+
+      <PlayersModal
+        visible={showPlayersModal}
+        players={state.players}
+        hostId={state.hostId}
+        me={me}
+        getAvatarUrl={getAvatarUrl}
+        onClose={() => setShowPlayersModal(false)}
+      />
     </>
   );
 }

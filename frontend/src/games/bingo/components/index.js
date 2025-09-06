@@ -11,3 +11,4 @@ export { default as AnnouncementModal } from "./AnnouncementModal";
 export { default as ExitModal } from "./ExitModal";
 export { default as NumbersModal } from "./NumbersModal";
 export { default as SpeedSelectModal } from "./SpeedSelectModal";
+export { default as PlayersModal } from "./PlayersModal";

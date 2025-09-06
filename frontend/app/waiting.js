@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -7,14 +7,16 @@ import {
   FlatList,
   ScrollView,
   Dimensions,
+  AppState,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { ChatPanel, ChatButton, ChatToasts } from "../src/shared/components";
-import { useAvatarSync, useSocket } from "../src/shared/hooks";
-import { Button } from "../src/shared/components/ui";
+import { useAvatarSync, useSocket, useStorage } from "../src/shared/hooks";
+import { getUsername } from "../src/shared/utils";
+import { Button, ConfirmModal, KickedModal } from "../src/shared/components/ui";
 
 const { width } = Dimensions.get("window");
 
@@ -46,8 +48,15 @@ export default function Waiting() {
   const [chatVisible, setChatVisible] = useState(false);
   const [currentMessage, setCurrentMessage] = useState(null); // legacy
   const [toastMessages, setToastMessages] = useState([]);
+  const [confirmKick, setConfirmKick] = useState({
+    visible: false,
+    target: null,
+  });
+  const [wasKicked, setWasKicked] = useState(false);
   const { syncPlayers, getAvatarUrl, clearMemoryCache } = useAvatarSync();
   const [changingCards, setChangingCards] = useState(false);
+  const { loadItem } = useStorage();
+  const lastIdentityRef = useRef({ username: null, name: null });
 
   // Función para obtener la ruta del juego según el tipo
   const getGameRoute = (gameKey, roomId) => {
@@ -72,14 +81,74 @@ export default function Waiting() {
     };
   }, [clearMemoryCache]);
 
+  const lastJoinRef = useRef(0);
+  const attemptingReconnectRef = useRef(false);
+  const appStateRef = useRef(AppState.currentState);
+  const wentBackgroundAtRef = useRef(null);
+
   useEffect(() => {
+    // Listener AppState para ampliar período de gracia y evitar desconexión por minimizar
+    const sub = AppState.addEventListener("change", (nextState) => {
+      const prev = appStateRef.current;
+      appStateRef.current = nextState;
+      if (!socket) return;
+      if (
+        (prev === "active" || prev === "inactive") &&
+        nextState === "background"
+      ) {
+        wentBackgroundAtRef.current = Date.now();
+        socket.emit("appBackground");
+      } else if (prev === "background" && nextState === "active") {
+        const diff = Date.now() - (wentBackgroundAtRef.current || Date.now());
+        wentBackgroundAtRef.current = null;
+        socket.emit("appForeground", { timeAwayMs: diff });
+        if (roomId) {
+          socket.emit("getState", { roomId });
+        }
+      }
+    });
+
     if (socketId) {
       setMe(socketId);
     }
+    const emitRejoinIfNeeded = async () => {
+      // Evitar SPAM: mínimo 1s entre intentos
+      if (Date.now() - lastJoinRef.current < 1000) return;
+      if (!roomId) return;
+      lastJoinRef.current = Date.now();
+      // Intentar obtener identidad fiable
+      let mePlayer = state.players?.find((p) => p.id === me);
+      let username = mePlayer?.username || lastIdentityRef.current.username;
+      let name = mePlayer?.name || lastIdentityRef.current.name;
+      if (!username) {
+        try {
+          username = await getUsername();
+        } catch {}
+      }
+      if (!name) {
+        try {
+          name = await loadItem("profile:name");
+        } catch {}
+      }
+      if (username) {
+        lastIdentityRef.current.username = username;
+      }
+      if (name) {
+        lastIdentityRef.current.name = name;
+      }
+      const playerPayload = { username, name };
+      socket.emit("joinRoom", { roomId, player: playerPayload });
+      socket.emit("getState", { roomId });
+    };
+
     const onConnect = () => {
       if (socket.id) {
         setMe(socket.id);
+        emitRejoinIfNeeded();
       }
+    };
+    const onReconnect = () => {
+      emitRejoinIfNeeded();
     };
     // Función onState optimizada:
     const onState = (s) => {
@@ -117,11 +186,48 @@ export default function Waiting() {
       const withId = { ...messageData, id };
       setToastMessages((prev) => [...prev, withId].slice(-4)); // máximo 4 visibles
     };
+    const onPlayerDisconnected = (payload) => {
+      if (!payload) return;
+      const id = `disc-${payload.playerId}-${Date.now()}`;
+      let reasonText = "se desconectó";
+      if (payload.reason === "left") reasonText = "salió de la sala";
+      else if (payload.reason === "kick") reasonText = "fue expulsado";
+      else if (payload.reason === "timeout") reasonText = "perdió la conexión";
+      // El nombre ya se muestra en ChatToastItem (header). Mantener solo la acción.
+      const text = reasonText;
+      const toast = {
+        id,
+        type: "system-disconnect",
+        content: text,
+        player: payload.username
+          ? {
+              id: payload.playerId,
+              name: payload.name,
+              username: payload.username,
+              avatarId: payload.avatarId,
+            }
+          : null,
+        meta: { reason: payload.reason },
+        timestamp: payload.timestamp || Date.now(),
+      };
+      setToastMessages((prev) => [...prev, toast].slice(-4));
+    };
 
     socket.on("state", onState);
     socket.on("joined", onJoined);
     socket.on("connect", onConnect);
+    socket.on("reconnect", onReconnect);
     socket.on("chatMessage", onChatMessage);
+    socket.on("playerDisconnected", onPlayerDisconnected);
+    const onKicked = () => {
+      // Mostrar modal y luego redirigir
+      setWasKicked(true);
+      // Pedir estado para reflejar salida
+      setTimeout(() => {
+        socket.emit("getState", { roomId });
+      }, 200);
+    };
+    socket.on("kicked", onKicked);
     // Solo pedir el estado si no tenemos uno inicial
     if (!parsedInitial) {
       socket.emit("getState", { roomId });
@@ -131,7 +237,11 @@ export default function Waiting() {
       socket.off("state", onState);
       socket.off("joined", onJoined);
       socket.off("connect", onConnect);
+      socket.off("reconnect", onReconnect);
       socket.off("chatMessage", onChatMessage);
+      socket.off("playerDisconnected", onPlayerDisconnected);
+      socket.off("kicked", onKicked);
+      sub?.remove?.();
     };
   }, [roomId]);
 
@@ -201,6 +311,7 @@ export default function Waiting() {
   const renderPlayer = ({ item, index }) => {
     const isMe = item.id === me;
     const isHost = item.id === state.hostId;
+    const canKick = state.hostId === me && !isHost; // Yo soy host y este jugador no lo es
 
     return (
       <View
@@ -329,6 +440,25 @@ export default function Waiting() {
             Listo para jugar
           </Text>
         </View>
+
+        {canKick && (
+          <TouchableOpacity
+            onPress={() => setConfirmKick({ visible: true, target: item })}
+            style={{
+              marginLeft: 12,
+              backgroundColor: "#e74c3c",
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 8,
+              flexDirection: "row",
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: "white", fontSize: 12, fontWeight: "700" }}>
+              Expulsar
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   };
@@ -731,6 +861,39 @@ export default function Waiting() {
       <ChatToasts
         messages={toastMessages}
         onItemComplete={handleToastComplete}
+      />
+
+      <ConfirmModal
+        visible={confirmKick.visible}
+        title="Expulsar jugador"
+        message={`¿Seguro que quieres expulsar a ${
+          confirmKick.target?.name || "este jugador"
+        } de la sala?`}
+        confirmLabel="Expulsar"
+        cancelLabel="Cancelar"
+        variant="danger"
+        onCancel={() => setConfirmKick({ visible: false, target: null })}
+        onConfirm={() => {
+          if (confirmKick.target) {
+            socket.emit("kickPlayer", {
+              roomId: state.roomId || roomId,
+              targetPlayerId: confirmKick.target.id,
+            });
+          }
+          setConfirmKick({ visible: false, target: null });
+        }}
+      />
+
+      <KickedModal
+        visible={wasKicked}
+        onClose={() => {
+          setWasKicked(false);
+          // Asegurar abandono definitivo local
+          router.replace("/gameSelect");
+        }}
+        title="Fuiste expulsado"
+        message="El anfitrión te removió de la sala. Puedes unirte a otra cuando quieras."
+        actionLabel="Entendido"
       />
     </>
   );
