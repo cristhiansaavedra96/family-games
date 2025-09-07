@@ -7,6 +7,7 @@ import {
   Image,
   Alert,
   ScrollView,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -29,6 +30,7 @@ export default function Profile() {
   const [isLoading, setIsLoading] = useState(false);
   const [username, setUsername] = useState(null);
   const [socketConnected, setSocketConnected] = useState(false);
+  const [profileLoaded, setProfileLoaded] = useState(false);
 
   // Cargar datos existentes
   useEffect(() => {
@@ -61,28 +63,70 @@ export default function Profile() {
     };
   }, []);
 
+  const fetchRemoteProfile = async (u) => {
+    if (!socket || !socket.connected || !u) return null;
+    return new Promise((resolve) => {
+      socket.emit(
+        "getPlayerProfile",
+        { username: u, gameKey: "bingo" },
+        (res) => {
+          if (res?.ok) resolve(res.player);
+          else resolve(null);
+        }
+      );
+    });
+  };
+
   const loadProfile = async () => {
     try {
       const savedName = await loadItem("profile:name");
       const savedAvatar = await loadItem("profile:avatar");
       const currentUsername = await getUsername();
 
-      if (savedName) setName(savedName);
-      if (savedAvatar) {
-        setAvatar(savedAvatar);
-        // Si tenemos avatar local, convertir a base64 para enviar al servidor
+      if (currentUsername) setUsername(currentUsername);
+
+      // Intentar remoto primero si hay username y conexión
+      let remote = null;
+      if (currentUsername && socket.connected) {
+        remote = await fetchRemoteProfile(currentUsername);
+      }
+
+      if (remote) {
+        if (remote.name) {
+          setName(remote.name);
+          await saveItem("profile:name", remote.name);
+        } else if (savedName) setName(savedName);
+
+        if (remote.avatarUrl) {
+          setAvatar(remote.avatarUrl);
+          await saveItem("profile:avatar", remote.avatarUrl);
+        } else if (savedAvatar) {
+          setAvatar(savedAvatar);
+        }
+      } else {
+        // Fallback a local si no remoto
+        if (savedName) setName(savedName);
+        if (savedAvatar) setAvatar(savedAvatar);
+      }
+
+      // Base64 sólo si el avatar es un path local (file://). Si viene remoto (data: o http) no convertir.
+      const finalAvatar = remote?.avatarUrl || savedAvatar;
+      if (finalAvatar && finalAvatar.startsWith("file://")) {
         try {
-          const base64 = await FileSystem.readAsStringAsync(savedAvatar, {
+          const base64 = await FileSystem.readAsStringAsync(finalAvatar, {
             encoding: FileSystem.EncodingType.Base64,
           });
           setAvatarBase64(`data:image/jpeg;base64,${base64}`);
         } catch (e) {
           console.error("❌ Error converting saved avatar to base64:", e);
         }
+      } else if (finalAvatar && finalAvatar.startsWith("data:")) {
+        setAvatarBase64(finalAvatar);
       }
-      if (currentUsername) setUsername(currentUsername);
     } catch (error) {
       console.log("Error loading profile:", error);
+    } finally {
+      setProfileLoaded(true);
     }
   };
 
@@ -168,11 +212,7 @@ export default function Profile() {
     setIsLoading(true);
 
     try {
-      // Guardar localmente primero
-      await saveItem("profile:name", name.trim());
-      if (avatar) {
-        await saveItem("profile:avatar", avatar);
-      }
+      // No sobreescribir local hasta confirmación servidor
 
       // Asegurar conexión del socket con reintentos
       let attempts = 0;
@@ -251,6 +291,9 @@ export default function Profile() {
           }
         });
       });
+      // Guardar local tras éxito
+      await saveItem("profile:name", name.trim());
+      if (avatar) await saveItem("profile:avatar", avatar);
       router.replace("/gameSelect");
     } catch (error) {
       console.error("Error saving profile:", error);
@@ -287,278 +330,313 @@ export default function Profile() {
   return (
     <>
       <StatusBar style="light" />
-      <View style={{ flex: 1, backgroundColor: "#2c3e50" }}>
-        <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right"]}>
-          <ScrollView
-            style={{ flex: 1, backgroundColor: "#f8f9fa" }}
-            showsVerticalScrollIndicator={false}
+      {!profileLoaded ? (
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "#2c3e50",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <ActivityIndicator size="large" color="#ffffff" />
+          <Text
+            style={{
+              color: "#ffffff",
+              marginTop: 16,
+              fontSize: 16,
+              fontFamily: "Montserrat_600SemiBold",
+            }}
           >
-            {/* Header con color sólido oscuro - efecto wave */}
-            <View
-              style={{
-                backgroundColor: "#2c3e50",
-                paddingTop: 80, // Aumentado para compensar el marginTop
-                paddingBottom: 40,
-                paddingHorizontal: 20,
-                borderBottomLeftRadius: 30,
-                borderBottomRightRadius: 30,
-                marginTop: -40, // Reducido para que no suba tanto
-              }}
+            Cargando perfil...
+          </Text>
+        </View>
+      ) : (
+        <View style={{ flex: 1, backgroundColor: "#2c3e50" }}>
+          <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right"]}>
+            <ScrollView
+              style={{ flex: 1, backgroundColor: "#f8f9fa" }}
+              showsVerticalScrollIndicator={false}
             >
-              {/* Back button */}
-              <TouchableOpacity
-                onPress={() => router.back()}
-                style={{
-                  position: "absolute",
-                  top: 60, // Ajustado para el nuevo paddingTop
-                  left: 20,
-                  width: 40,
-                  height: 40,
-                  borderRadius: 20,
-                  backgroundColor: "rgba(255,255,255,0.2)",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.3)",
-                }}
-              >
-                <Ionicons name="arrow-back" size={20} color="white" />
-              </TouchableOpacity>
-
-              {/* Connection status indicator */}
+              {/* Header con color sólido oscuro - efecto wave */}
               <View
                 style={{
-                  position: "absolute",
-                  top: 60,
-                  right: 20,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  backgroundColor: socketConnected
-                    ? "rgba(76, 175, 80, 0.2)"
-                    : "rgba(244, 67, 54, 0.2)",
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                  borderRadius: 20,
-                  borderWidth: 1,
-                  borderColor: socketConnected
-                    ? "rgba(76, 175, 80, 0.5)"
-                    : "rgba(244, 67, 54, 0.5)",
+                  backgroundColor: "#2c3e50",
+                  paddingTop: 80, // Aumentado para compensar el marginTop
+                  paddingBottom: 40,
+                  paddingHorizontal: 20,
+                  borderBottomLeftRadius: 30,
+                  borderBottomRightRadius: 30,
+                  marginTop: -40, // Reducido para que no suba tanto
                 }}
               >
-                <Ionicons
-                  name={socketConnected ? "checkmark" : "close"}
-                  size={12}
-                  color="white"
-                />
-              </View>
-
-              <View style={{ alignItems: "center" }}>
-                <Typography
-                  variant="heading1"
+                {/* Back button */}
+                <TouchableOpacity
+                  onPress={() => router.back()}
                   style={{
-                    color: "white",
-                    marginBottom: 20,
+                    position: "absolute",
+                    top: 60, // Ajustado para el nuevo paddingTop
+                    left: 20,
+                    width: 40,
+                    height: 40,
+                    borderRadius: 20,
+                    backgroundColor: "rgba(255,255,255,0.2)",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.3)",
                   }}
                 >
-                  Mi Perfil
-                </Typography>
-                <Typography
-                  variant="body"
-                  style={{
-                    color: "rgba(255,255,255,0.8)",
-                    textAlign: "center",
-                  }}
-                >
-                  Personaliza tu experiencia de juego
-                </Typography>
-              </View>
-            </View>
+                  <Ionicons name="arrow-back" size={20} color="white" />
+                </TouchableOpacity>
 
-            {/* Avatar Section */}
-            <View
-              style={{ alignItems: "center", marginTop: -30, marginBottom: 30 }}
-            >
-              <TouchableOpacity onPress={pickImage} activeOpacity={0.8}>
+                {/* Connection status indicator */}
                 <View
                   style={{
-                    width: 120,
-                    height: 120,
-                    borderRadius: 60,
-                    backgroundColor: "#fff",
-                    shadowColor: "#000",
-                    shadowOpacity: 0.15,
-                    shadowRadius: 20,
-                    shadowOffset: { width: 0, height: 8 },
-                    elevation: 10,
-                    position: "relative",
-                    overflow: "hidden",
+                    position: "absolute",
+                    top: 60,
+                    right: 20,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    backgroundColor: socketConnected
+                      ? "rgba(76, 175, 80, 0.2)"
+                      : "rgba(244, 67, 54, 0.2)",
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 20,
+                    borderWidth: 1,
+                    borderColor: socketConnected
+                      ? "rgba(76, 175, 80, 0.5)"
+                      : "rgba(244, 67, 54, 0.5)",
                   }}
                 >
-                  {avatar ? (
-                    <Image
-                      source={{ uri: avatar }}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        borderRadius: 60,
-                      }}
-                      resizeMode="cover"
-                    />
-                  ) : (
+                  <Ionicons
+                    name={socketConnected ? "checkmark" : "close"}
+                    size={12}
+                    color="white"
+                  />
+                </View>
+
+                <View style={{ alignItems: "center" }}>
+                  <Typography
+                    variant="heading1"
+                    style={{
+                      color: "white",
+                      marginBottom: 20,
+                    }}
+                  >
+                    Mi Perfil
+                  </Typography>
+                  <Typography
+                    variant="body"
+                    style={{
+                      color: "rgba(255,255,255,0.8)",
+                      textAlign: "center",
+                    }}
+                  >
+                    Personaliza tu experiencia de juego
+                  </Typography>
+                </View>
+              </View>
+
+              {/* Avatar Section */}
+              <View
+                style={{
+                  alignItems: "center",
+                  marginTop: -30,
+                  marginBottom: 30,
+                }}
+              >
+                <TouchableOpacity onPress={pickImage} activeOpacity={0.8}>
+                  <View
+                    style={{
+                      width: 120,
+                      height: 120,
+                      borderRadius: 60,
+                      backgroundColor: "#fff",
+                      shadowColor: "#000",
+                      shadowOpacity: 0.15,
+                      shadowRadius: 20,
+                      shadowOffset: { width: 0, height: 8 },
+                      elevation: 10,
+                      position: "relative",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {avatar ? (
+                      <Image
+                        source={{ uri: avatar }}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          borderRadius: 60,
+                        }}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          backgroundColor: "#34495e",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderRadius: 60,
+                        }}
+                      >
+                        <Typography
+                          variant="heading2"
+                          style={{
+                            color: "white",
+                          }}
+                        >
+                          {getInitials()}
+                        </Typography>
+                      </View>
+                    )}
+
+                    {/* Camera icon overlay */}
                     <View
                       style={{
-                        width: "100%",
-                        height: "100%",
+                        position: "absolute",
+                        bottom: 8,
+                        right: 8,
+                        width: 32,
+                        height: 32,
+                        borderRadius: 16,
                         backgroundColor: "#34495e",
                         alignItems: "center",
                         justifyContent: "center",
-                        borderRadius: 60,
+                        borderWidth: 3,
+                        borderColor: "#fff",
                       }}
                     >
-                      <Typography
-                        variant="heading2"
-                        style={{
-                          color: "white",
-                        }}
-                      >
-                        {getInitials()}
-                      </Typography>
+                      <Ionicons name="camera" size={16} color="white" />
                     </View>
-                  )}
+                  </View>
+                </TouchableOpacity>
 
-                  {/* Camera icon overlay */}
-                  <View
+                <TouchableOpacity onPress={pickImage} style={{ marginTop: 12 }}>
+                  <Typography
+                    variant="caption"
                     style={{
-                      position: "absolute",
-                      bottom: 8,
-                      right: 8,
-                      width: 32,
-                      height: 32,
-                      borderRadius: 16,
-                      backgroundColor: "#34495e",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      borderWidth: 3,
-                      borderColor: "#fff",
+                      color: "#34495e",
+                      fontWeight: "600",
                     }}
                   >
-                    <Ionicons name="camera" size={16} color="white" />
-                  </View>
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={pickImage} style={{ marginTop: 12 }}>
-                <Typography
-                  variant="caption"
-                  style={{
-                    color: "#34495e",
-                    fontWeight: "600",
-                  }}
-                >
-                  {avatar ? "Cambiar foto" : "Agregar foto"}
-                </Typography>
-              </TouchableOpacity>
-            </View>
-
-            {/* Form Section */}
-            <View style={{ paddingHorizontal: 20, marginBottom: 30 }}>
-              <View
-                style={{
-                  backgroundColor: "#fff",
-                  borderRadius: 20,
-                  padding: 24,
-                  shadowColor: "#000",
-                  shadowOpacity: 0.08,
-                  shadowRadius: 12,
-                  shadowOffset: { width: 0, height: 4 },
-                  elevation: 6,
-                }}
-              >
-                <Typography
-                  variant="heading4"
-                  style={{
-                    color: "#2c3e50",
-                    marginBottom: 12,
-                  }}
-                >
-                  Nombre de usuario
-                </Typography>
-
-                <TextInput
-                  placeholder="Ingresa tu nombre"
-                  value={name}
-                  onChangeText={setName}
-                  style={{
-                    fontSize: 18,
-                    padding: 16,
-                    borderRadius: 12,
-                    backgroundColor: "#f8f9fa",
-                    borderWidth: 2,
-                    borderColor: name.trim() ? "#34495e" : "#e1e5e9",
-                    color: "#2c3e50",
-                    fontFamily: "Montserrat_500Medium",
-                  }}
-                  maxLength={20}
-                  autoCapitalize="words"
-                />
-
-                <Typography
-                  variant="caption"
-                  style={{
-                    color: "#7f8c8d",
-                    marginTop: 8,
-                  }}
-                >
-                  Este será tu nombre visible para otros jugadores
-                </Typography>
+                    {avatar ? "Cambiar foto" : "Agregar foto"}
+                  </Typography>
+                </TouchableOpacity>
               </View>
-            </View>
 
-            {/* Save Button */}
-            <View style={{ paddingHorizontal: 20, marginBottom: 40 }}>
-              <Button
-                title={
-                  isLoading
-                    ? "Guardando..."
-                    : !socketConnected
-                    ? "Sin Conexión"
-                    : "Guardar Perfil"
-                }
-                onPress={saveProfile}
-                disabled={!name.trim() || isLoading || !socketConnected}
-                loading={isLoading}
-                variant={
-                  !socketConnected
-                    ? "ghost"
-                    : name.trim() && socketConnected
-                    ? "primary"
-                    : "outline"
-                }
-                size="large"
-                icon={
-                  !isLoading &&
-                  (!socketConnected ? (
-                    <Ionicons name="cloud-offline" size={24} color="#95a5a6" />
-                  ) : (
-                    <Ionicons name="checkmark-circle" size={24} color="white" />
-                  ))
-                }
-                style={{
-                  backgroundColor: !socketConnected
-                    ? "#bdc3c7"
-                    : name.trim() && socketConnected
-                    ? "#34495e" // Color original del perfil
-                    : "#bdc3c7",
-                  borderColor: !socketConnected ? "#95a5a6" : undefined,
-                }}
-                textStyle={{
-                  color: !socketConnected ? "#7f8c8d" : "white",
-                }}
-              />
-            </View>
-          </ScrollView>
-        </SafeAreaView>
-      </View>
+              {/* Form Section */}
+              <View style={{ paddingHorizontal: 20, marginBottom: 30 }}>
+                <View
+                  style={{
+                    backgroundColor: "#fff",
+                    borderRadius: 20,
+                    padding: 24,
+                    shadowColor: "#000",
+                    shadowOpacity: 0.08,
+                    shadowRadius: 12,
+                    shadowOffset: { width: 0, height: 4 },
+                    elevation: 6,
+                  }}
+                >
+                  <Typography
+                    variant="heading4"
+                    style={{
+                      color: "#2c3e50",
+                      marginBottom: 12,
+                    }}
+                  >
+                    Nombre de usuario
+                  </Typography>
+
+                  <TextInput
+                    placeholder="Ingresa tu nombre"
+                    value={name}
+                    onChangeText={setName}
+                    style={{
+                      fontSize: 18,
+                      padding: 16,
+                      borderRadius: 12,
+                      backgroundColor: "#f8f9fa",
+                      borderWidth: 2,
+                      borderColor: name.trim() ? "#34495e" : "#e1e5e9",
+                      color: "#2c3e50",
+                      fontFamily: "Montserrat_500Medium",
+                    }}
+                    maxLength={20}
+                    autoCapitalize="words"
+                  />
+
+                  <Typography
+                    variant="caption"
+                    style={{
+                      color: "#7f8c8d",
+                      marginTop: 8,
+                    }}
+                  >
+                    Este será tu nombre visible para otros jugadores
+                  </Typography>
+                </View>
+              </View>
+
+              {/* Save Button */}
+              <View style={{ paddingHorizontal: 20, marginBottom: 40 }}>
+                <Button
+                  title={
+                    isLoading
+                      ? "Guardando..."
+                      : !socketConnected
+                      ? "Sin Conexión"
+                      : "Guardar Perfil"
+                  }
+                  onPress={saveProfile}
+                  disabled={!name.trim() || isLoading || !socketConnected}
+                  loading={isLoading}
+                  variant={
+                    !socketConnected
+                      ? "ghost"
+                      : name.trim() && socketConnected
+                      ? "primary"
+                      : "outline"
+                  }
+                  size="large"
+                  icon={
+                    !isLoading &&
+                    (!socketConnected ? (
+                      <Ionicons
+                        name="cloud-offline"
+                        size={24}
+                        color="#95a5a6"
+                      />
+                    ) : (
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={24}
+                        color="white"
+                      />
+                    ))
+                  }
+                  style={{
+                    backgroundColor: !socketConnected
+                      ? "#bdc3c7"
+                      : name.trim() && socketConnected
+                      ? "#34495e" // Color original del perfil
+                      : "#bdc3c7",
+                    borderColor: !socketConnected ? "#95a5a6" : undefined,
+                  }}
+                  textStyle={{
+                    color: !socketConnected ? "#7f8c8d" : "white",
+                  }}
+                />
+              </View>
+            </ScrollView>
+          </SafeAreaView>
+        </View>
+      )}
     </>
   );
 }

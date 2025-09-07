@@ -14,6 +14,11 @@ export const AVAILABLE_GAMES = {
     available: true,
     minPlayers: 1,
     maxPlayers: 8,
+    assets: {
+      previewType: "image",
+      previewImage: require("../images/bingo/logo.png"),
+      fit: "cover", // ocupar completamente contenedor
+    },
     // Rutas
     routes: {
       rooms: "/rooms", // Para seleccionar sala
@@ -44,6 +49,10 @@ export const AVAILABLE_GAMES = {
     minPlayers: 2,
     maxPlayers: 4,
     disabled: true,
+    assets: {
+      previewType: "image",
+      previewImage: require("../images/naipes_spanish/1-espada.png"),
+    },
     // Rutas
     routes: {
       rooms: "/rooms", // Para seleccionar sala
@@ -54,6 +63,50 @@ export const AVAILABLE_GAMES = {
       maxCards: 3,
       suits: ["espada", "oro", "copa", "basto"],
       values: [1, 2, 3, 4, 5, 6, 7, 10, 11, 12],
+    },
+  },
+  conga: {
+    id: "conga",
+    name: "CONGA",
+    description: "Chinchón (variante uruguaya)",
+    icon: "albums", // placeholder ionicon
+    color: "#8e44ad",
+    available: true,
+    minPlayers: 2,
+    maxPlayers: 6,
+    disabled: true, // Próximamente
+    routes: {
+      rooms: "/rooms",
+      game: "/games/conga/[roomId]",
+    },
+    assets: {
+      previewType: "image",
+      previewImage: require("../images/naipes_spanish/10-copa.png"),
+    },
+    config: {
+      deck: "spanish",
+    },
+  },
+  uno: {
+    id: "uno",
+    name: "UNO",
+    description: "El clásico de colores",
+    icon: "color-palette",
+    color: "#e67e22",
+    available: true,
+    minPlayers: 2,
+    maxPlayers: 8,
+    disabled: true, // Próximamente
+    routes: {
+      rooms: "/rooms",
+      game: "/games/uno/[roomId]",
+    },
+    assets: {
+      previewType: "image",
+      previewImage: require("../images/naipes_uno/1-rojo.png"),
+    },
+    config: {
+      deck: "uno",
     },
   },
   // Futuras expansiones:

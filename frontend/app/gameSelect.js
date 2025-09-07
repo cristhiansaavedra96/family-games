@@ -48,92 +48,99 @@ export default function Games() {
   return (
     <>
       <StatusBar style="light" />
-      <View style={{ flex: 1, backgroundColor: "#2c3e50" }}>
+      {/* Fondo claro para que se vean las esquinas redondeadas del header oscuro */}
+      <View style={{ flex: 1, backgroundColor: "#f8f9fa" }}>
         <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right"]}>
-          <ScrollView
-            style={{ flex: 1, backgroundColor: "#f8f9fa" }}
-            showsVerticalScrollIndicator={false}
+          {/* Header fijo */}
+          <View
+            style={{
+              backgroundColor: "#2c3e50",
+              paddingTop: 80,
+              paddingBottom: 28,
+              paddingHorizontal: 20,
+              borderBottomLeftRadius: 30,
+              borderBottomRightRadius: 30,
+              marginTop: -40,
+              zIndex: 10,
+            }}
           >
-            {/* Header con color sólido oscuro - efecto wave */}
-            <View
+            {/* Botón perfil */}
+            <TouchableOpacity
+              onPress={() => router.push("/profile")}
               style={{
-                backgroundColor: "#2c3e50",
-                paddingTop: 80,
-                paddingBottom: 40,
-                paddingHorizontal: 20,
-                borderBottomLeftRadius: 30,
-                borderBottomRightRadius: 30,
-                marginTop: -40,
+                position: "absolute",
+                top: 55,
+                right: 20,
+                width: 50,
+                height: 50,
+                borderRadius: 25,
+                backgroundColor: userAvatar
+                  ? "transparent"
+                  : "rgba(255,255,255,0.2)",
+                alignItems: "center",
+                justifyContent: "center",
+                borderWidth: userAvatar ? 3 : 1,
+                borderColor: userAvatar
+                  ? "rgba(255,255,255,0.8)"
+                  : "rgba(255,255,255,0.3)",
+                shadowColor: "#000",
+                shadowOpacity: userAvatar ? 0.2 : 0,
+                shadowRadius: 8,
+                shadowOffset: { width: 0, height: 4 },
+                elevation: userAvatar ? 4 : 0,
               }}
             >
-              {/* Profile button */}
-              <TouchableOpacity
-                onPress={() => router.push("/profile")}
+              {userAvatar ? (
+                <Image
+                  source={{ uri: userAvatar }}
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 22,
+                  }}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Ionicons name="person" size={24} color="white" />
+              )}
+            </TouchableOpacity>
+
+            <View style={{ alignItems: "center" }}>
+              <Text
                 style={{
-                  position: "absolute",
-                  top: 55,
-                  right: 20,
-                  width: 50,
-                  height: 50,
-                  borderRadius: 25,
-                  backgroundColor: userAvatar
-                    ? "transparent"
-                    : "rgba(255,255,255,0.2)",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderWidth: userAvatar ? 3 : 1,
-                  borderColor: userAvatar
-                    ? "rgba(255,255,255,0.8)"
-                    : "rgba(255,255,255,0.3)",
-                  shadowColor: "#000",
-                  shadowOpacity: userAvatar ? 0.2 : 0,
-                  shadowRadius: 8,
-                  shadowOffset: { width: 0, height: 4 },
-                  elevation: userAvatar ? 4 : 0,
+                  fontSize: 32,
+                  fontWeight: "800",
+                  color: "white",
+                  marginBottom: 8,
+                  fontFamily: "Montserrat_800ExtraBold",
                 }}
               >
-                {userAvatar ? (
-                  <Image
-                    source={{ uri: userAvatar }}
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 22,
-                    }}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <Ionicons name="person" size={24} color="white" />
-                )}
-              </TouchableOpacity>
-
-              <View style={{ alignItems: "center" }}>
-                <Text
-                  style={{
-                    fontSize: 32,
-                    fontWeight: "800",
-                    color: "white",
-                    marginBottom: 10,
-                    fontFamily: "Montserrat_800ExtraBold",
-                  }}
-                >
-                  Juegos
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 16,
-                    color: "rgba(255,255,255,0.8)",
-                    textAlign: "center",
-                    fontFamily: "Montserrat_400Regular",
-                  }}
-                >
-                  Elige tu juego favorito
-                </Text>
-              </View>
+                Juegos
+              </Text>
+              <Text
+                style={{
+                  fontSize: 16,
+                  color: "rgba(255,255,255,0.8)",
+                  textAlign: "center",
+                  fontFamily: "Montserrat_400Regular",
+                }}
+              >
+                Elige tu juego favorito
+              </Text>
             </View>
+          </View>
 
-            {/* Games Grid */}
-            <View style={{ paddingHorizontal: 20, marginTop: 20 }}>
+          {/* Contenido scrollable (solo lista) */}
+          <View style={{ flex: 1, backgroundColor: "#f8f9fa" }}>
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={{
+                paddingHorizontal: 20,
+                paddingTop: 24,
+                paddingBottom: 40,
+              }}
+              showsVerticalScrollIndicator={false}
+            >
               <View style={{ gap: 20 }}>
                 {games.map((game) => (
                   <TouchableOpacity
@@ -141,57 +148,118 @@ export default function Games() {
                     onPress={() => selectGame(game.id)}
                     style={{
                       backgroundColor: game.disabled ? "#f0f0f0" : "#fff",
-                      borderRadius: 24,
-                      padding: 24,
+                      borderRadius: 18,
+                      paddingVertical: 10,
+                      paddingHorizontal: 14,
                       shadowColor: "#000",
-                      shadowOpacity: game.disabled ? 0.05 : 0.12,
-                      shadowRadius: 16,
-                      shadowOffset: { width: 0, height: 8 },
-                      elevation: game.disabled ? 2 : 10,
+                      shadowOpacity: game.disabled ? 0.035 : 0.08,
+                      shadowRadius: 10,
+                      shadowOffset: { width: 0, height: 4 },
+                      elevation: game.disabled ? 1 : 5,
                       borderWidth: 1,
-                      borderColor: "rgba(44, 62, 80, 0.08)",
-                      opacity: game.disabled ? 0.6 : 1,
+                      borderColor: "rgba(44,62,80,0.05)",
+                      opacity: game.disabled ? 0.63 : 1,
+                      minHeight: 112,
                     }}
-                    activeOpacity={game.disabled ? 1 : 0.7} // Desactiva feedback si está bloqueado
-                    disabled={game.disabled} // Desactiva el click
+                    activeOpacity={game.disabled ? 1 : 0.7}
+                    disabled={game.disabled}
                   >
                     <View
                       style={{ flexDirection: "row", alignItems: "center" }}
                     >
-                      {/* Icon */}
-                      <View
-                        style={{
-                          width: 70,
-                          height: 70,
-                          borderRadius: 35,
-                          backgroundColor: game.disabled
-                            ? "#bdc3c7"
-                            : game.color,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          marginRight: 20,
-                          shadowColor: game.color,
-                          shadowOpacity: game.disabled ? 0 : 0.3,
-                          shadowRadius: 8,
-                          shadowOffset: { width: 0, height: 4 },
-                          elevation: game.disabled ? 0 : 6,
-                        }}
-                      >
-                        <Ionicons
-                          name={game.icon}
-                          size={32}
-                          color={game.disabled ? "#ecf0f1" : "white"}
-                        />
-                      </View>
+                      {game.assets?.previewImage ? (
+                        <View
+                          style={{
+                            width: 92,
+                            height: 92,
+                            borderRadius: 14,
+                            overflow: "hidden",
+                            backgroundColor: "#ffffff",
+                            marginRight: 14,
+                            shadowColor: "#000",
+                            shadowOpacity: 0.08,
+                            shadowRadius: 6,
+                            shadowOffset: { width: 0, height: 3 },
+                            elevation: 3,
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Image
+                            source={game.assets.previewImage}
+                            style={{ width: "100%", height: "100%" }}
+                            resizeMode={
+                              game.assets.fit === "cover" ? "cover" : "contain"
+                            }
+                          />
+                          {game.assets.overlayDark && (
+                            <View
+                              pointerEvents="none"
+                              style={{
+                                position: "absolute",
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                backgroundColor: "rgba(0,0,0,0.35)",
+                              }}
+                            />
+                          )}
+                          {game.disabled && (
+                            <View
+                              style={{
+                                position: "absolute",
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                backgroundColor: "rgba(0,0,0,0.35)",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              <Ionicons
+                                name="lock-closed"
+                                size={30}
+                                color="rgba(255,255,255,0.9)"
+                              />
+                            </View>
+                          )}
+                        </View>
+                      ) : (
+                        <View
+                          style={{
+                            width: 92,
+                            height: 92,
+                            borderRadius: 16,
+                            backgroundColor: game.disabled
+                              ? "#bdc3c7"
+                              : game.color,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            marginRight: 14,
+                            shadowColor: game.color,
+                            shadowOpacity: game.disabled ? 0 : 0.18,
+                            shadowRadius: 6,
+                            shadowOffset: { width: 0, height: 3 },
+                            elevation: game.disabled ? 0 : 3,
+                          }}
+                        >
+                          <Ionicons
+                            name={game.icon}
+                            size={40}
+                            color={game.disabled ? "#ecf0f1" : "white"}
+                          />
+                        </View>
+                      )}
 
-                      {/* Game Info */}
                       <View style={{ flex: 1 }}>
                         <Text
                           style={{
-                            fontSize: 26,
+                            fontSize: 20,
                             fontWeight: "800",
                             color: game.disabled ? "#7f8c8d" : "#2c3e50",
-                            marginBottom: 6,
+                            marginBottom: 3,
                             fontFamily: "Montserrat_800ExtraBold",
                           }}
                         >
@@ -200,9 +268,9 @@ export default function Games() {
                         {game.disabled ? (
                           <Text
                             style={{
-                              fontSize: 15,
+                              fontSize: 11,
                               color: "#95a5a6",
-                              lineHeight: 22,
+                              lineHeight: 16,
                               fontFamily: "Montserrat_500Medium",
                               fontStyle: "italic",
                             }}
@@ -212,9 +280,9 @@ export default function Games() {
                         ) : (
                           <Text
                             style={{
-                              fontSize: 15,
+                              fontSize: 12,
                               color: "#7f8c8d",
-                              lineHeight: 22,
+                              lineHeight: 17,
                               fontFamily: "Montserrat_500Medium",
                             }}
                           >
@@ -223,22 +291,21 @@ export default function Games() {
                         )}
                       </View>
 
-                      {/* Arrow indicator (solo si NO está deshabilitado) */}
                       {!game.disabled && (
                         <View
                           style={{
-                            width: 40,
-                            height: 40,
-                            borderRadius: 20,
+                            width: 36,
+                            height: 36,
+                            borderRadius: 18,
                             backgroundColor: "rgba(44, 62, 80, 0.08)",
                             alignItems: "center",
                             justifyContent: "center",
-                            marginLeft: 12,
+                            marginLeft: 10,
                           }}
                         >
                           <Ionicons
                             name="arrow-forward"
-                            size={20}
+                            size={18}
                             color="#2c3e50"
                           />
                         </View>
@@ -247,8 +314,8 @@ export default function Games() {
                   </TouchableOpacity>
                 ))}
               </View>
-            </View>
-          </ScrollView>
+            </ScrollView>
+          </View>
         </SafeAreaView>
       </View>
     </>

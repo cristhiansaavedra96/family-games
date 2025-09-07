@@ -15,6 +15,7 @@ const {
   createGetLeaderboardHandler,
   createGetTopPlayersHandler,
   createSearchPlayersHandler,
+  createGetPlayerProfileHandler,
 } = require("./shared/statsHandler");
 const {
   createGetAvatarHandler,
@@ -206,6 +207,7 @@ const getStatsHandler = createGetStatsHandler(roomsManager);
 const getLeaderboardHandler = createGetLeaderboardHandler();
 const getTopPlayersHandler = createGetTopPlayersHandler();
 const searchPlayersHandler = createSearchPlayersHandler();
+const getPlayerProfileHandler = createGetPlayerProfileHandler();
 const getAvatarHandler = createGetAvatarHandler();
 const getAvatarByIdHandler = createGetAvatarByIdHandler();
 const syncAvatarsHandler = createSyncAvatarsHandler();
@@ -296,6 +298,14 @@ io.on("connection", (socket) => {
   socket.on("getLeaderboard", statsHandlers.getLeaderboard(socket));
   socket.on("getTopPlayers", statsHandlers.getTopPlayers(socket));
   socket.on("searchPlayers", statsHandlers.searchPlayers(socket));
+  socket.on("getPlayerProfile", async (payload, cb) => {
+    try {
+      const res = await getPlayerProfileHandler(payload, cb);
+      if (cb && typeof cb === "function" && !res) return; // cb ya respondido
+    } catch (e) {
+      if (cb) cb({ ok: false, error: e.message });
+    }
+  });
   socket.on("getAvatar", statsHandlers.getAvatar(socket));
   socket.on("getAvatarById", statsHandlers.getAvatarById(socket));
   socket.on("syncAvatars", statsHandlers.syncAvatars(socket));

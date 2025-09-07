@@ -50,6 +50,10 @@ export default function Rooms() {
       if (!avatarPath) {
         return null;
       }
+      // Si ya es un data URI (base64 embebido) no intentar leer del sistema de archivos
+      if (avatarPath.startsWith("data:image")) {
+        return avatarPath; // Ya listo para usar
+      }
       const base64 = await FileSystem.readAsStringAsync(avatarPath, {
         encoding: FileSystem.EncodingType.Base64,
       });
@@ -87,11 +91,15 @@ export default function Rooms() {
         const myUsername = await getUsername();
         const savedAvatarPath = await loadItem("profile:avatar");
         if (myUsername && savedAvatarPath) {
-          const base64 = await FileSystem.readAsStringAsync(savedAvatarPath, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          const avatarBase64 = `data:image/jpeg;base64,${base64}`;
-          setLocalAvatarUrl(myUsername, avatarBase64);
+          if (savedAvatarPath.startsWith("data:image")) {
+            setLocalAvatarUrl(myUsername, savedAvatarPath);
+          } else {
+            const base64 = await FileSystem.readAsStringAsync(savedAvatarPath, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+            const avatarBase64 = `data:image/jpeg;base64,${base64}`;
+            setLocalAvatarUrl(myUsername, avatarBase64);
+          }
         }
       } catch (error) {
         console.error("❌ Error loading my avatar in rooms:", error);
