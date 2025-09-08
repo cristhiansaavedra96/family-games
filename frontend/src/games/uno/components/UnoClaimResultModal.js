@@ -5,45 +5,23 @@ import Modal from "../../../shared/components/ui/Modal";
 import Typography from "../../../shared/components/ui/Typography";
 import Button from "../../../shared/components/ui/Button";
 
-const ChallengeResultModal = ({
+const UnoClaimResultModal = ({
   visible,
-  challengeResult,
+  unoClaimResult,
   getAvatarUrl,
   onClose,
   currentColor, // Color actual de la mesa
 }) => {
-  const [phase, setPhase] = useState(1); // 1: mensaje inicial, 2: puntos animados, 3: resultado
+  const [phase, setPhase] = useState(1); // 1: mensaje inicial, 2: resultado (sin evaluando)
   const [emojiScale] = useState(new Animated.Value(0));
-  const [dotsAnimation] = useState(new Animated.Value(0));
 
   useEffect(() => {
-    if (visible && challengeResult) {
+    if (visible && unoClaimResult) {
       setPhase(1);
 
-      // Después de 2 segundos, mostrar los puntos animados
-      const timer1 = setTimeout(() => {
+      // Después de 2 segundos, mostrar el resultado directamente
+      const timer = setTimeout(() => {
         setPhase(2);
-        // Animar puntos por 2 segundos más
-        Animated.loop(
-          Animated.sequence([
-            Animated.timing(dotsAnimation, {
-              toValue: 1,
-              duration: 500,
-              useNativeDriver: false,
-            }),
-            Animated.timing(dotsAnimation, {
-              toValue: 0,
-              duration: 500,
-              useNativeDriver: false,
-            }),
-          ]),
-          { iterations: 2 }
-        ).start();
-      }, 2000);
-
-      // Después de 4 segundos total, mostrar el resultado
-      const timer2 = setTimeout(() => {
-        setPhase(3);
         // Animar el emoji
         Animated.spring(emojiScale, {
           toValue: 1,
@@ -52,72 +30,80 @@ const ChallengeResultModal = ({
           friction: 8,
         }).start();
 
-        // Auto-cerrar después de 3 segundos en fase 3
+        // Auto-cerrar después de 3 segundos en fase 2 (5 segundos total)
         setTimeout(() => {
           onClose();
         }, 3000);
-      }, 4000);
+      }, 2000);
 
       return () => {
-        clearTimeout(timer1);
-        clearTimeout(timer2);
+        clearTimeout(timer);
       };
     }
-  }, [visible, challengeResult, emojiScale, dotsAnimation]);
+  }, [visible, unoClaimResult, emojiScale]);
 
   useEffect(() => {
     if (!visible) {
       setPhase(1);
       emojiScale.setValue(0);
-      dotsAnimation.setValue(0);
     }
-  }, [visible, emojiScale, dotsAnimation]);
+  }, [visible, emojiScale]);
 
-  if (!challengeResult) {
+  if (!unoClaimResult) {
     return null;
   }
 
   const {
-    challenger,
+    claimer,
     target,
     wasValid,
     penalty,
-    challengerName,
+    claimerName,
     targetName,
-    challengerUsername,
+    claimerUsername,
     targetUsername,
-  } = challengeResult;
+    // Formato actual del GameScreen
+    byPlayerId,
+    byPlayerName,
+    targetPlayerId,
+    targetPlayerName,
+    success,
+  } = unoClaimResult;
+
+  // Adaptar el formato actual a las props esperadas
+  const finalClaimer = claimer || byPlayerId;
+  const finalTarget = target || targetPlayerId;
+  const finalClaimerName = claimerName || byPlayerName;
+  const finalTargetName = targetName || targetPlayerName;
+  const finalWasValid = wasValid !== undefined ? wasValid : success; // Si success=true, significa que la acusación era válida
+  const finalPenalty = penalty || 2;
 
   // Función para obtener avatar por ID de jugador
   const getPlayerAvatar = (playerId) => {
-    if (playerId === challenger && challengerUsername) {
-      return getAvatarUrl(challengerUsername);
+    // El acusador usa claimerUsername, el objetivo usa targetUsername
+    if (playerId === finalClaimer && claimerUsername) {
+      return getAvatarUrl(claimerUsername);
     }
-    if (playerId === target && targetUsername) {
+    if (playerId === finalTarget && targetUsername) {
       return getAvatarUrl(targetUsername);
     }
     return null;
   };
 
   // Lógica del resultado:
-  // - El protagonista del resultado final siempre es el TARGET (quien fue desafiado)
-  // - Si wasValid = true: el +4 era válido → target gana, challenger pierde
-  // - Si wasValid = false: el +4 era inválido → challenger gana, target pierde
-  const targetWins = wasValid; // Target gana si el +4 era válido
-  const primaryColor = targetWins ? "#2ecc71" : "#e74c3c"; // Verde si target gana, rojo si pierde
-  const emoji = targetWins ? "😉" : "😅"; // Guiño si gana, sonrisa nerviosa si pierde
-
-  // El protagonista siempre es el target (quien fue desafiado)
-  const protagonistName = targetName;
-  const protagonistId = target;
+  // - finalWasValid = true: la acusación era válida → target no dijo UNO → target pierde
+  // - finalWasValid = false: la acusación era inválida → target sí dijo UNO → claimer pierde
+  const claimerWins = finalWasValid; // Acusador gana si la acusación era válida
+  const primaryColor = claimerWins ? "#2ecc71" : "#e74c3c"; // Verde si acusador gana, rojo si pierde
+  const emoji = claimerWins ? "🎯" : "😅"; // Objetivo si gana la acusación, sonrisa nerviosa si se equivoca
 
   // Determinar quién roba cartas
-  const loserName = targetWins ? challengerName : targetName;
+  const loserName = claimerWins ? finalTargetName : finalClaimerName;
 
-  // Texto del resultado dirigido al target
-  const resultText = wasValid
-    ? "No podía jugar ninguna otra carta"
-    : "Sí, podía jugar otra carta";
+  // Texto del resultado
+  const resultText = finalWasValid
+    ? "¡No había dicho UNO!"
+    : "Sí había dicho UNO";
 
   // Función para mapear colores UNO a colores hexadecimales
   const getUnoColorHex = (color) => {
@@ -131,46 +117,9 @@ const ChallengeResultModal = ({
     return colorMap[color?.toLowerCase()] || "#2c3e50"; // Gris por defecto
   };
 
-  // Color de fondo del modal basado en el color actual de la mesa
-  const modalBackgroundColor = currentColor
-    ? getUnoColorHex(currentColor)
-    : "#2c3e50";
+  // Color de fondo del modal - siempre oscuro para UNO claims
+  const modalBackgroundColor = "#2c3e50"; // Gris oscuro fijo
   const modalBackgroundWithOpacity = `${modalBackgroundColor}F0`; // Agregar 94% opacidad
-
-  const AnimatedDots = () => {
-    const opacity1 = dotsAnimation.interpolate({
-      inputRange: [0, 0.33, 0.66, 1],
-      outputRange: [0.3, 1, 0.3, 0.3],
-    });
-    const opacity2 = dotsAnimation.interpolate({
-      inputRange: [0, 0.33, 0.66, 1],
-      outputRange: [0.3, 0.3, 1, 0.3],
-    });
-    const opacity3 = dotsAnimation.interpolate({
-      inputRange: [0, 0.33, 0.66, 1],
-      outputRange: [0.3, 0.3, 0.3, 1],
-    });
-
-    return (
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-        <Animated.Text
-          style={{ color: "#fff", fontSize: 40, opacity: opacity1 }}
-        >
-          •
-        </Animated.Text>
-        <Animated.Text
-          style={{ color: "#fff", fontSize: 40, opacity: opacity2 }}
-        >
-          •
-        </Animated.Text>
-        <Animated.Text
-          style={{ color: "#fff", fontSize: 40, opacity: opacity3 }}
-        >
-          •
-        </Animated.Text>
-      </View>
-    );
-  };
 
   return (
     <Modal
@@ -185,14 +134,14 @@ const ChallengeResultModal = ({
         width: "95%",
         maxWidth: 420,
         borderWidth: 3,
-        borderColor: phase === 3 ? primaryColor : modalBackgroundColor,
+        borderColor: phase === 2 ? primaryColor : modalBackgroundColor,
         alignItems: "center",
         paddingVertical: 24,
         paddingHorizontal: 20,
       }}
     >
       {/* CONTENIDO FIJO DE LA FASE 1 - SIEMPRE VISIBLE */}
-      {/* Mensaje del desafío */}
+      {/* Mensaje de la acusación */}
       <Typography
         variant="heading3"
         style={{
@@ -201,7 +150,7 @@ const ChallengeResultModal = ({
           marginBottom: 20,
         }}
       >
-        🎯 DESAFÍO
+        🚨 ACUSACIÓN UNO
       </Typography>
 
       <Typography
@@ -214,17 +163,17 @@ const ChallengeResultModal = ({
         }}
       >
         <Text style={{ color: "#e74c3c", fontWeight: "bold" }}>
-          {challengerName}
+          {finalClaimerName}
         </Text>
-        <Text style={{ color: "#ecf0f1" }}> desafía a </Text>
+        <Text style={{ color: "#ecf0f1" }}> acusa a </Text>
         <Text style={{ color: "#3498db", fontWeight: "bold" }}>
-          {targetName}
+          {finalTargetName}
         </Text>
       </Typography>
 
-      {/* Avatar del desafiante */}
+      {/* Avatar del acusador */}
       <View style={{ alignItems: "center", marginBottom: 16 }}>
-        {getPlayerAvatar(challenger) ? (
+        {getPlayerAvatar(finalClaimer) ? (
           <View
             style={{
               width: 100,
@@ -237,7 +186,7 @@ const ChallengeResultModal = ({
             }}
           >
             <Image
-              source={{ uri: getPlayerAvatar(challenger) }}
+              source={{ uri: getPlayerAvatar(finalClaimer) }}
               style={{ width: 100, height: 100 }}
               resizeMode="cover"
             />
@@ -257,7 +206,7 @@ const ChallengeResultModal = ({
             }}
           >
             <Typography variant="body" style={{ color: "#fff", fontSize: 28 }}>
-              {challengerName?.[0]?.toUpperCase() || "?"}
+              {finalClaimerName?.[0]?.toUpperCase() || "?"}
             </Typography>
           </View>
         )}
@@ -265,7 +214,7 @@ const ChallengeResultModal = ({
           variant="body"
           style={{ color: "#e74c3c", fontWeight: "bold", fontSize: 14 }}
         >
-          {challengerName}
+          {finalClaimerName}
         </Typography>
       </View>
 
@@ -278,12 +227,12 @@ const ChallengeResultModal = ({
           marginBottom: 16,
         }}
       >
-        "Te desafío, ¿podías jugar otra carta?"
+        "¡No dijiste UNO!"
       </Typography>
 
-      {/* Avatar del desafiado */}
+      {/* Avatar del acusado */}
       <View style={{ alignItems: "center", marginBottom: 20 }}>
-        {getPlayerAvatar(target) ? (
+        {getPlayerAvatar(finalTarget) ? (
           <View
             style={{
               width: 100,
@@ -296,7 +245,7 @@ const ChallengeResultModal = ({
             }}
           >
             <Image
-              source={{ uri: getPlayerAvatar(target) }}
+              source={{ uri: getPlayerAvatar(finalTarget) }}
               style={{ width: 100, height: 100 }}
               resizeMode="cover"
             />
@@ -319,7 +268,7 @@ const ChallengeResultModal = ({
               variant="heading2"
               style={{ color: "#fff", fontSize: 28 }}
             >
-              {targetName?.[0]?.toUpperCase() || "?"}
+              {finalTargetName?.[0]?.toUpperCase() || "?"}
             </Typography>
           </View>
         )}
@@ -327,31 +276,13 @@ const ChallengeResultModal = ({
           variant="body"
           style={{ color: "#3498db", fontWeight: "bold", fontSize: 16 }}
         >
-          {targetName}
+          {finalTargetName}
         </Typography>
       </View>
 
       {/* CONTENIDO DINÁMICO BASADO EN LA FASE */}
       {phase === 2 && (
-        // Fase 2: Agregar puntos animados debajo del contenido fijo
-        <View style={{ alignItems: "center", marginBottom: 20 }}>
-          <Typography
-            variant="body"
-            style={{
-              color: "#f39c12",
-              textAlign: "center",
-              fontSize: 14,
-              marginBottom: 10,
-            }}
-          >
-            Evaluando...
-          </Typography>
-          <AnimatedDots />
-        </View>
-      )}
-
-      {phase === 3 && (
-        // Fase 3: Mostrar resultado debajo del contenido fijo
+        // Fase 2: Mostrar resultado directamente
         <View style={{ alignItems: "center" }}>
           {/* Mensaje del resultado con emoji */}
           <View
@@ -392,10 +323,12 @@ const ChallengeResultModal = ({
               marginBottom: 20,
             }}
           >
-            <Typography style={{ color: "#e74c3c", fontWeight: "bold" }}>
+            <Text style={{ color: "#e74c3c", fontWeight: "bold" }}>
               {loserName}
-            </Typography>
-            {` robó ${penalty} cartas`}
+            </Text>
+            <Text
+              style={{ color: "#ecf0f1" }}
+            >{` robó ${finalPenalty} cartas`}</Text>
           </Typography>
         </View>
       )}
@@ -403,4 +336,4 @@ const ChallengeResultModal = ({
   );
 };
 
-export default ChallengeResultModal;
+export default UnoClaimResultModal;

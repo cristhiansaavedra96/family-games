@@ -595,7 +595,7 @@ export default function Rooms() {
                   onPress={() =>
                     router.push({
                       pathname: "/leaderboard",
-                      params: { gameKey: "bingo" },
+                      params: { gameKey: gameType },
                     })
                   }
                   variant="ghost"

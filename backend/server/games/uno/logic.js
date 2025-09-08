@@ -61,6 +61,10 @@ function initialGameState() {
     pendingDrawCount: 0, // acumulado por stacking
     pendingDrawType: null, // 'draw2' o 'wild_draw4' mientras haya stacking
     winner: null,
+    // Sistema de puntos
+    scores: {}, // socketId -> puntos acumulados
+    eliminatedPlayers: new Set(), // jugadores eliminados por alcanzar el límite
+    roundWinner: null, // ganador de la ronda actual
   };
 }
 
@@ -148,6 +152,20 @@ function randomColor() {
   return COLORS[Math.floor(Math.random() * COLORS.length)];
 }
 
+// Calcular puntos de una mano de cartas
+function calculateHandPoints(hand) {
+  return hand.reduce((total, card) => {
+    if (card.kind === "number") {
+      return total + card.value;
+    } else if (["skip", "reverse", "draw2"].includes(card.kind)) {
+      return total + 20;
+    } else if (["wild", "wild_draw4"].includes(card.kind)) {
+      return total + 50;
+    }
+    return total;
+  }, 0);
+}
+
 module.exports = {
   COLORS,
   buildDeck,
@@ -160,4 +178,5 @@ module.exports = {
   canPlayCard,
   applyCardEffects,
   randomColor,
+  calculateHandPoints,
 };

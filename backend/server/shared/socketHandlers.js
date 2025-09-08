@@ -579,6 +579,73 @@ function createRoomHandlers({
         }
       },
 
+    // UNO DEBUG: hacer ganar a un jugador específico (solo desarrollo)
+    debugWinPlayer:
+      (socket) =>
+      ({ roomId, targetPlayerId }) => {
+        console.log(`[DEBUG][socketHandlers] debugWinPlayer received:`, {
+          roomId,
+          targetPlayerId,
+          socketId: socket.id,
+        });
+
+        try {
+          const rid = roomId || socket.data.roomId;
+          if (!rid) {
+            console.log(`[DEBUG][socketHandlers] No room ID provided`);
+            socket.emit("debugWinPlayerResult", {
+              ok: false,
+              reason: "no_room_id",
+            });
+            return;
+          }
+
+          const gameHandler = getGameHandler(rid);
+          if (!gameHandler || !gameHandler.debugWinPlayer) {
+            console.log(
+              `[DEBUG][socketHandlers] No game handler or debugWinPlayer method`
+            );
+            socket.emit("debugWinPlayerResult", {
+              ok: false,
+              reason: "no_game_handler",
+            });
+            return;
+          }
+
+          console.log(
+            `[DEBUG][socketHandlers] Calling gameHandler.debugWinPlayer`
+          );
+          gameHandler
+            .debugWinPlayer(socket.id, targetPlayerId)
+            .then((result) => {
+              console.log(
+                `[DEBUG][socketHandlers] debugWinPlayer result:`,
+                result
+              );
+              socket.emit("debugWinPlayerResult", result);
+              if (result.ok) {
+                console.log(
+                  `[DEBUG] Player ${targetPlayerId} set to win by ${socket.id}`
+                );
+                broadcastRoomState(rid);
+              }
+            })
+            .catch((error) => {
+              console.error("Error in debugWinPlayer:", error);
+              socket.emit("debugWinPlayerResult", {
+                ok: false,
+                reason: "server_error",
+              });
+            });
+        } catch (e) {
+          console.error("Error debugWinPlayer:", e);
+          socket.emit("debugWinPlayerResult", {
+            ok: false,
+            reason: "server_error",
+          });
+        }
+      },
+
     // Re-enviar mano privada bajo demanda
     requestPrivateHand:
       (socket) =>
@@ -1206,6 +1273,49 @@ function createGameFlowHandlers({
           });
         }
       },
+
+    debugWinPlayer: async (data) => {
+      console.log(
+        "[DEBUG] Socket handler received debugWinPlayer event:",
+        data
+      );
+      try {
+        const gameHandler = getGameHandler(rid);
+        if (!gameHandler) {
+          console.error("[DEBUG] No game handler found for room:", rid);
+          socket.emit("debugWinPlayerResult", {
+            ok: false,
+            reason: "No game handler found",
+          });
+          return;
+        }
+
+        if (typeof gameHandler.debugWinPlayer === "function") {
+          console.log("[DEBUG] Calling debugWinPlayer on game handler");
+          const result = await gameHandler.debugWinPlayer(data.playerId);
+          console.log("[DEBUG] debugWinPlayer result:", result);
+          socket.emit("debugWinPlayerResult", result);
+
+          if (result.ok) {
+            broadcastRoomState(rid);
+          }
+        } else {
+          console.log(
+            "[DEBUG] Game handler does not have debugWinPlayer method"
+          );
+          socket.emit("debugWinPlayerResult", {
+            ok: false,
+            reason: "Debug method not available for this game",
+          });
+        }
+      } catch (error) {
+        console.error("[DEBUG] Error in debugWinPlayer handler:", error);
+        socket.emit("debugWinPlayerResult", {
+          ok: false,
+          reason: "server_error",
+        });
+      }
+    },
   };
 }
 

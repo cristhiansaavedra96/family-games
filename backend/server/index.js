@@ -70,6 +70,9 @@ function cleanupGameHandler(roomId) {
 
 // Función para asegurar que un jugador solo esté en una sala
 function ensurePlayerInSingleRoom(socket, targetRoomId = null) {
+  console.log(
+    `[DEBUG] ensurePlayerInSingleRoom called for player: ${socket.id}, targetRoom: ${targetRoomId}`
+  );
   const currentRoom = roomsManager.findPlayerRoom(socket.id);
 
   if (currentRoom && currentRoom.id !== targetRoomId) {

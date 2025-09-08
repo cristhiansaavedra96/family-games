@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -27,7 +27,14 @@ import {
   getUnoBackImage,
   getUnoDeckStackImages,
 } from "../utils/cardAssets";
-import { ChallengeResultModal } from "../components";
+import {
+  ChallengeResultModal,
+  RoundEndModal,
+  DebugPanel,
+  UnoClaimResultModal,
+} from "../components";
+import UnoGameSummaryModal from "../components/GameSummaryModal";
+import { SHOW_DEBUG } from "../../../core/config/debug";
 
 // Estado inicial básico para UNO (public + private)
 const initialPublic = {
@@ -45,6 +52,9 @@ const initialPublic = {
   winner: null,
   uno: [],
   wild4Challenge: null,
+  scores: {},
+  eliminatedPlayers: [],
+  roundWinner: null,
 };
 
 export default function UnoGameScreen() {
@@ -52,7 +62,7 @@ export default function UnoGameScreen() {
   const roomId = params.roomId;
   const { socket } = useSocket();
   const { syncPlayers, getAvatarUrl, syncAvatar } = useAvatarSync();
-  const { myAvatar, myUsername } = useMyAvatar();
+  const { myAvatar, myUsername, myName } = useMyAvatar();
 
   const [publicState, setPublicState] = useState(initialPublic);
   const [hand, setHand] = useState([]); // cartas privadas
@@ -61,9 +71,21 @@ export default function UnoGameScreen() {
   const [wildColorModal, setWildColorModal] = useState(null); // cardId en selección
   const [selectedCardId, setSelectedCardId] = useState(null);
   const [challengeResult, setChallengeResult] = useState(null); // resultado del desafío
+  const [isDragging, setIsDragging] = useState(false); // estado para drag visual
   // Chat state
   const [chatVisible, setChatVisible] = useState(false);
   const [toastMessages, setToastMessages] = useState([]);
+  // Game Summary state
+  const [gameSummaryVisible, setGameSummaryVisible] = useState(false);
+  const [finalGameData, setFinalGameData] = useState(null);
+  const [playersReady, setPlayersReady] = useState({});
+  const [countdown, setCountdown] = useState(null); // Estado para el contador 3, 2, 1
+  // Round End Modal state
+  const [roundEndVisible, setRoundEndVisible] = useState(false);
+  const [roundEndData, setRoundEndData] = useState(null);
+  // UNO Claim system state
+  const [unoClaimResult, setUnoClaimResult] = useState(null); // Resultado del reclamo UNO
+  const [playersWithOneCard, setPlayersWithOneCard] = useState([]); // Jugadores con 1 carta que pueden ser reclamados
   const dragY = useRef(new Animated.Value(0)).current;
   const dragX = useRef(new Animated.Value(0)).current;
   const dragCardId = useRef(null);
@@ -181,44 +203,20 @@ export default function UnoGameScreen() {
     },
   };
 
+  // Estilo extra para ChatToasts cuando el resumen está activo (asegurar capa superior)
+  const chatToastsExtraStyle = gameSummaryVisible
+    ? { zIndex: 3000000, elevation: 3000000 }
+    : null;
+
   const DRAG_THRESHOLD = 120; // distancia hacia arriba para jugar
+  // Detección de interacción
+  const DOUBLE_TAP_DELAY = 260; // ms máximo entre taps
+  const TAP_DEADZONE = 10; // px de movimiento permitido para considerarse tap
+  const lastTapRef = useRef({ time: 0, cardId: null });
+  const touchStartRef = useRef({ x: 0, y: 0 });
+  const movedRef = useRef(false); // Para saber si se movió fuera de deadzone
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => !!dragCardId.current,
-      onMoveShouldSetPanResponder: () => !!dragCardId.current,
-      onPanResponderGrant: () => {
-        dragActive.current = true;
-      },
-      onPanResponderMove: (_, g) => {
-        if (!dragActive.current) return;
-        if (g.dy < 0) dragY.setValue(g.dy);
-        dragX.setValue(g.dx * 0.5);
-      },
-      onPanResponderRelease: (_, g) => {
-        const cid = dragCardId.current;
-        dragActive.current = false;
-        dragCardId.current = null;
-        if (g.dy < -DRAG_THRESHOLD && cid) {
-          const card = hand.find((c) => c.id === cid);
-          if (card) playCard(card);
-        }
-        Animated.parallel([
-          Animated.spring(dragY, { toValue: 0, useNativeDriver: true }),
-          Animated.spring(dragX, { toValue: 0, useNativeDriver: true }),
-        ]).start();
-      },
-      onPanResponderTerminate: () => {
-        dragActive.current = false;
-        dragCardId.current = null;
-        Animated.parallel([
-          Animated.spring(dragY, { toValue: 0, useNativeDriver: true }),
-          Animated.spring(dragX, { toValue: 0, useNativeDriver: true }),
-        ]).start();
-      },
-    })
-  ).current;
-
+  // PanResponder global eliminado - ahora cada carta maneja su propio drag
   const isMyTurn =
     publicState.currentPlayer === me ||
     publicState.currentPlayer === socket?.id;
@@ -241,8 +239,24 @@ export default function UnoGameScreen() {
         }
       }
       if (s.hostId) setHostId(s.hostId);
+
+      // Actualizar estado de jugadores listos
+      if (s.playersReady) {
+        const readyObj = {};
+        s.playersReady.forEach((playerId) => {
+          readyObj[playerId] = true;
+        });
+        setPlayersReady(readyObj);
+      }
     };
-    const onPrivateHand = ({ hand }) => setHand(hand || []);
+    const onPrivateHand = ({ hand }) => {
+      console.log(
+        "[UNO][Frontend] privateHand received:",
+        hand ? hand.length : 0,
+        "cards"
+      );
+      setHand(hand || []);
+    };
     const onJoined = ({ id, hostId }) => {
       setMe(id);
       setHostId(hostId);
@@ -294,13 +308,133 @@ export default function UnoGameScreen() {
       }));
     });
     socket.on("unoDeclared", () => {});
-    socket.on("unoCalledOut", () => {});
+    socket.on("unoCalledOut", (data) => {
+      console.log("[UNO] unoCalledOut received:", data);
+
+      // Encontrar los nombres de los jugadores
+      const targetPlayer = publicState.players.find(
+        (p) => p.id === data.target
+      );
+      const byPlayer = publicState.players.find((p) => p.id === data.by);
+
+      // Mostrar el modal con el resultado
+      setUnoClaimResult({
+        success: true,
+        targetPlayerId: data.target,
+        targetPlayerName:
+          targetPlayer?.name || targetPlayer?.username || "Jugador",
+        targetUsername: targetPlayer?.username,
+        byPlayerId: data.by,
+        byPlayerName: byPlayer?.name || byPlayer?.username || "Jugador",
+        claimerUsername: byPlayer?.username,
+        penalty: data.penalty || 2,
+      });
+
+      // Auto-cerrar el modal después de 5 segundos
+      setTimeout(() => {
+        setUnoClaimResult(null);
+      }, 5000);
+    });
     socket.on("playerAtUno", () => {});
     socket.on("unoStateCleared", () => {});
 
-    // Pedir estado inicial y mano privada
-    socket.emit("getState", { roomId });
-    socket.emit("requestPrivateHand", { roomId });
+    // Game Over / Winner event
+    socket.on("winner", (data) => {
+      console.log("[UNO][Frontend] winner received:", data);
+      setFinalGameData(data); // Guardar los datos finales del juego
+      setGameSummaryVisible(true);
+    });
+
+    // Round End event
+    socket.on("roundEnd", (data) => {
+      console.log("[UNO][Frontend] roundEnd received:", data);
+      console.log(
+        "[UNO][Frontend] playersWithScores:",
+        data?.playersWithScores
+      );
+      console.log("[UNO][Frontend] Setting modal visible");
+      setRoundEndData(data);
+      setRoundEndVisible(true);
+    });
+
+    // Nueva ronda iniciada - actualizar estado
+    socket.on("newRoundStarted", (data) => {
+      console.log("[UNO][Frontend] newRoundStarted received:", data);
+      // Cerrar modal de fin de ronda si está abierto
+      setRoundEndVisible(false);
+      setRoundEndData(null);
+
+      // Forzar solicitud del estado Y mano privada después de un pequeño delay
+      setTimeout(() => {
+        socket.emit("getState", { roomId });
+        socket.emit("requestPrivateHand", { roomId });
+      }, 100);
+    });
+
+    // Juego iniciado - similar a nueva ronda
+    socket.on("gameStarted", (data) => {
+      console.log("[UNO][Frontend] gameStarted received:", data);
+      // Asegurar que se limpie cualquier estado previo
+      setRoundEndVisible(false);
+      setRoundEndData(null);
+      setGameSummaryVisible(false);
+      setPlayersReady({});
+
+      // Forzar solicitud del estado Y mano privada después de un pequeño delay
+      setTimeout(() => {
+        socket.emit("getState", { roomId });
+        socket.emit("requestPrivateHand", { roomId });
+      }, 100);
+    });
+
+    // Ready state for play again functionality
+    // Nota: playersReady ahora se maneja en onState
+
+    // Debug result listener
+    socket.on("debugWinPlayerResult", (result) => {
+      console.log(`[DEBUG] Received debugWinPlayerResult:`, result);
+      if (result.ok) {
+        console.log(`[DEBUG] Player win successful! Winner:`, result.winner);
+      } else {
+        console.error(`[DEBUG] Player win failed. Reason:`, result.reason);
+        // Mostrar toast de error si es necesario
+        if (result.reason === "debug_disabled_in_production") {
+          console.warn("[DEBUG] Debug is disabled in production");
+        } else if (result.reason === "game_not_active") {
+          console.warn("[DEBUG] Game is not active");
+        } else if (result.reason === "player_not_in_game") {
+          console.warn("[DEBUG] Player not in game");
+        }
+      }
+    });
+
+    // Conectar a la sala con información del jugador
+    const connectToRoom = async () => {
+      let username = myUsername;
+      let name = myName;
+
+      // Si no tenemos la información, intentar obtenerla del storage
+      if (!username || !name) {
+        try {
+          const { loadItem } = await import("../../../core/storage");
+          if (!username) username = await loadItem("profile:username");
+          if (!name) name = await loadItem("profile:name");
+        } catch (error) {
+          console.warn("Could not load profile data:", error);
+        }
+      }
+
+      // Unirse a la sala (esto dispara ensurePlayerInSingleRoom en el backend)
+      socket.emit("joinRoom", {
+        roomId,
+        player: { username, name },
+      });
+
+      // Pedir estado inicial y mano privada
+      socket.emit("getState", { roomId });
+      socket.emit("requestPrivateHand", { roomId });
+    };
+    connectToRoom();
 
     // Chat listeners
     const onChatMessage = (messageData) => {
@@ -346,6 +480,10 @@ export default function UnoGameScreen() {
       socket.off("unoCalledOut");
       socket.off("playerAtUno");
       socket.off("unoStateCleared");
+      socket.off("winner");
+      socket.off("roundEnd");
+      socket.off("newRoundStarted");
+      socket.off("gameStarted");
       socket.off("chatMessage");
       socket.off("playerDisconnected");
     };
@@ -358,6 +496,100 @@ export default function UnoGameScreen() {
     );
     if (playersForSync.length) syncPlayers(playersForSync);
   }, [publicState.players, syncPlayers, socket]);
+
+  // Efecto para auto-solicitar cartas cuando están vacías pero el juego ha comenzado
+  useEffect(() => {
+    if (!socket || !me || !publicState.started) return;
+
+    // Si el juego ha comenzado, tengo mi ID, pero no tengo cartas
+    if (hand.length === 0 && publicState.started && !publicState.gameEnded) {
+      console.log(
+        "[UNO][Frontend] Auto-requesting private hand - game started but no cards"
+      );
+      const timer = setTimeout(() => {
+        socket.emit("requestPrivateHand", { roomId });
+      }, 500); // Pequeño delay para evitar spam
+
+      return () => clearTimeout(timer);
+    }
+  }, [
+    socket,
+    me,
+    publicState.started,
+    publicState.gameEnded,
+    hand.length,
+    roomId,
+  ]);
+
+  // Efecto para detectar cambios en la cantidad de cartas
+  useEffect(() => {
+    console.log(`[UNO][Frontend] Hand updated: ${hand.length} cards`);
+    if (hand.length > 0) {
+      console.log(
+        "[UNO][Frontend] Cards loaded successfully:",
+        hand.map((c) => `${c.color}-${c.kind}-${c.value}`)
+      );
+    }
+  }, [hand.length]);
+
+  // 🔧 detectar jugadores con una sola carta para habilitar reclamo UNO
+  useEffect(() => {
+    if (!publicState.started || publicState.gameEnded) {
+      setPlayersWithOneCard([]);
+      return;
+    }
+
+    const oneCardPlayers = publicState.players.filter(
+      (player) => player.handCount === 1 && player.id !== me
+    );
+
+    setPlayersWithOneCard(oneCardPlayers.map((p) => p.id));
+  }, [publicState.players, publicState.started, publicState.gameEnded, me]);
+
+  // 🔧 detectar cuando todos los jugadores están listos para nueva partida
+  useEffect(() => {
+    const totalPlayers = publicState.players?.length || 0;
+    const readyPlayerIds = Object.keys(playersReady).filter(
+      (id) => playersReady[id]
+    );
+    const readyCount = readyPlayerIds.length;
+
+    if (
+      totalPlayers > 0 &&
+      readyCount === totalPlayers &&
+      gameSummaryVisible &&
+      !countdown
+    ) {
+      console.log("🎮 UNO - Todos listos - iniciando contador");
+      startCountdown();
+    }
+  }, [playersReady, publicState.players, gameSummaryVisible, countdown]);
+
+  // Función para iniciar el contador de 5, 4, 3, 2, 1
+  const startCountdown = useCallback(() => {
+    setCountdown(5);
+
+    const countdownInterval = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev === null) {
+          clearInterval(countdownInterval);
+          return null;
+        }
+
+        if (prev === 1) {
+          setTimeout(() => {
+            setGameSummaryVisible(false);
+            setPlayersReady({});
+            setFinalGameData(null);
+          }, 50);
+          clearInterval(countdownInterval);
+          return null;
+        }
+
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
 
   const extractUnoState = (s) => ({
     started: s.started,
@@ -374,6 +606,9 @@ export default function UnoGameScreen() {
     winner: s.winner,
     uno: s.uno || [],
     wild4Challenge: s.wild4Challenge || null,
+    scores: s.scores || {},
+    eliminatedPlayers: s.eliminatedPlayers || [],
+    roundWinner: s.roundWinner || null,
   });
 
   // Debug: verificar el currentColor
@@ -408,10 +643,27 @@ export default function UnoGameScreen() {
     socket.emit("declareUno", { roomId });
   };
 
-  const handleCallOut = (targetId) => {
+  const handleClaimUno = (targetId) => {
+    console.log(`[UNO] Reclamando UNO a jugador: ${targetId}`);
     socket.emit("callOutUno", { roomId, targetPlayerId: targetId });
-  };
 
+    // Escuchar resultado del reclamo
+    const onUnoClaimResult = (result) => {
+      console.log("[UNO] Resultado del reclamo UNO:", result);
+      if (result.success) {
+        setUnoClaimResult(result);
+
+        // Auto-cerrar el modal después de 5 segundos
+        setTimeout(() => {
+          setUnoClaimResult(null);
+        }, 5000);
+      }
+
+      socket.off("callOutUnoResult", onUnoClaimResult);
+    };
+
+    socket.on("callOutUnoResult", onUnoClaimResult);
+  };
   const handleChallenge = () => {
     if (
       publicState.wild4Challenge &&
@@ -453,35 +705,187 @@ export default function UnoGameScreen() {
 
   const cancelWild = () => setWildColorModal(null);
 
-  const onSelectCard = (card) => {
-    if (!isMyTurn) return; // no seleccionar si no es mi turno
-    setSelectedCardId((prev) => {
-      if (prev === card.id) {
-        // Segundo tap: intentar jugar
-        playCard(card);
-        return null;
-      }
-      dragCardId.current = card.id; // preparar drag sólo al seleccionar
-      return card.id;
-    });
+  // Game Summary handlers
+  const handleCloseSummary = () => {
+    setGameSummaryVisible(false);
+    setFinalGameData(null); // Limpiar los datos finales
+    router.back(); // Volver a la lista de salas
   };
 
-  const renderCard = ({ item }) => {
+  const handlePlayAgain = () => {
+    if (playersReady[me]) return; // Ya está listo
+    socket.emit("readyForNewGame", { roomId });
+    setPlayersReady((prev) => ({ ...prev, [me]: true }));
+  };
+
+  // Maneja el single tap (selección) y double tap (jugar carta)
+  const handleTapCard = (card) => {
+    if (!isMyTurn) return;
+    const now = Date.now();
+    const { time: lastTime, cardId: lastId } = lastTapRef.current;
+    if (lastId === card.id && now - lastTime < DOUBLE_TAP_DELAY) {
+      // Double tap: jugar carta
+      lastTapRef.current = { time: 0, cardId: null };
+      playCard(card);
+      setSelectedCardId(null);
+      return;
+    }
+    // Single tap: seleccionar
+    lastTapRef.current = { time: now, cardId: card.id };
+    setSelectedCardId(card.id);
+  };
+
+  const renderCard = ({ item, index }) => {
     const img = getUnoCardImage(item);
     const selected = selectedCardId === item.id;
-    // La carta seleccionada se pinta en overlay global
-    if (selected)
-      return <View style={{ width: 90, height: 140, marginRight: -50 }} />;
+
+    // Determinar si la carta es jugable (reglas espejo del backend)
+    const isPlayable = (() => {
+      // Solo interesa si es mi turno; si no, marcamos no jugable para el efecto visual pero sin interacción
+      if (!isMyTurn) return false;
+      const state = publicState;
+      if (!state || !state.topCard) return false;
+
+      // Stacking activo
+      if (state.pendingDrawCount > 0) {
+        if (state.pendingDrawType === "draw2" && item.kind === "draw2")
+          return true;
+        if (
+          state.pendingDrawType === "wild_draw4" &&
+          item.kind === "wild_draw4"
+        )
+          return true;
+        return false;
+      }
+
+      // Wilds siempre jugables
+      if (item.kind === "wild" || item.kind === "wild_draw4") return true;
+
+      // Coincidir por color (usar currentColor si existe, sino el color de topCard)
+      const activeColor = state.currentColor || state.topCard.color;
+      if (item.color && item.color === activeColor) return true;
+
+      // Coincidir por tipo/valor con la carta superior
+      const topCard = state.topCard;
+
+      // Si ambas son cartas numéricas, comparar valor
+      if (item.kind === "number" && topCard.kind === "number") {
+        return item.value === topCard.value;
+      }
+
+      // Si ambas son del mismo tipo especial (skip, reverse, draw2)
+      if (item.kind !== "number" && item.kind === topCard.kind) {
+        return true;
+      }
+
+      return false;
+    })();
+
+    // Efecto visual de selección mejorado (sin borde): levantar + glow
+    const cardScale = selected ? 1.0 : 1.0;
+    const cardMarginRight = selected ? -25 : -35; // Menos superposición cuando está seleccionada
+    // zIndex incremental evita que se solapen overlays de cartas anteriores creando "bandas"
+    const cardZIndex = selected ? 1000 : index + 1;
+    const liftTranslate = selected && !isDragging ? -2 : 0; // levantamiento más sutil
+
+    // PanResponder individual para cada carta para drag directo
+    const cardPanResponder = PanResponder.create({
+      onStartShouldSetPanResponder: () => isMyTurn && isPlayable,
+      onMoveShouldSetPanResponder: (_, g) => {
+        if (!isMyTurn || !isPlayable) return false;
+        // Si ya estamos activos arrastrando, continuar
+        if (dragActive.current) return true;
+        // Detectar si se excedió deadzone para iniciar drag
+        const moved =
+          Math.abs(g.dx) > TAP_DEADZONE || Math.abs(g.dy) > TAP_DEADZONE;
+        return moved; // Solo si se movió iniciamos pan responder para drag
+      },
+      onPanResponderGrant: (e) => {
+        if (!isMyTurn || !isPlayable) return;
+        const { pageX, pageY } = e.nativeEvent;
+        touchStartRef.current = { x: pageX, y: pageY };
+        movedRef.current = false;
+        // No activamos drag aún; esperamos a superar deadzone en move
+      },
+      onPanResponderMove: (_, g) => {
+        if (!isMyTurn || !isPlayable) return;
+        const moved =
+          Math.abs(g.dx) > TAP_DEADZONE || Math.abs(g.dy) > TAP_DEADZONE;
+        if (moved) movedRef.current = true;
+        if (moved && !dragActive.current) {
+          // Activar drag ahora
+          setSelectedCardId(item.id);
+          dragCardId.current = item.id;
+          dragActive.current = true;
+          setIsDragging(true);
+        }
+        if (dragActive.current) {
+          if (g.dy < 0) dragY.setValue(g.dy);
+          dragX.setValue(g.dx * 0.5);
+        }
+      },
+      onPanResponderRelease: (e, g) => {
+        if (!isMyTurn || !isPlayable) return;
+        const wasDragging = dragActive.current;
+        dragActive.current = false;
+        dragCardId.current = null;
+        setIsDragging(false);
+
+        if (wasDragging) {
+          // Caso drag
+          if (g.dy < -DRAG_THRESHOLD) {
+            playCard(item);
+            setSelectedCardId(null);
+          } else {
+            // Volver a posición original; mantener selección un instante
+            setTimeout(() => {
+              setSelectedCardId(null);
+            }, 120);
+          }
+          Animated.parallel([
+            Animated.spring(dragY, { toValue: 0, useNativeDriver: true }),
+            Animated.spring(dragX, { toValue: 0, useNativeDriver: true }),
+          ]).start();
+          return;
+        }
+
+        // Si no hubo drag (deadzone), esto es un tap
+        handleTapCard(item);
+      },
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderTerminate: () => {
+        dragActive.current = false;
+        dragCardId.current = null;
+        setIsDragging(false);
+        Animated.parallel([
+          Animated.spring(dragY, { toValue: 0, useNativeDriver: true }),
+          Animated.spring(dragX, { toValue: 0, useNativeDriver: true }),
+        ]).start();
+      },
+    });
+
     return (
-      <TouchableOpacity
-        style={styles.cardWrapper}
-        onPress={isMyTurn ? () => onSelectCard(item) : undefined}
-        onLongPress={isMyTurn ? () => onSelectCard(item) : undefined}
-        delayLongPress={120}
-        disabled={!isMyTurn}
+      <Animated.View
+        {...cardPanResponder.panHandlers}
+        style={[
+          styles.cardWrapper,
+          {
+            marginRight: cardMarginRight,
+            zIndex: cardZIndex,
+            elevation: selected ? 50 : 0,
+            // Solo bajar opacidad temporal al arrastrar la carta seleccionada
+            opacity: isDragging && selected ? 0.3 : 1.0,
+            transform: [{ scale: cardScale }, { translateY: liftTranslate }],
+          },
+        ]}
       >
+        {selected && !isDragging && (
+          <View style={styles.cardGlowContainer} pointerEvents="none">
+            <View style={styles.cardGlow} />
+          </View>
+        )}
         <Image source={img} style={styles.cardImage} resizeMode="contain" />
-      </TouchableOpacity>
+      </Animated.View>
     );
   };
 
@@ -547,6 +951,22 @@ export default function UnoGameScreen() {
   // Crear estilos responsivos dinámicos
   const responsiveStyles = createResponsiveStyles(responsiveSize);
 
+  // Props comunes para PlayerSlot
+  const getPlayerSlotProps = (position, player) => ({
+    position,
+    player,
+    unoPlayers,
+    shrink: shrinkOpponents,
+    responsiveStyles,
+    responsiveSize,
+    scores: publicState.scores,
+    eliminatedPlayers: publicState.eliminatedPlayers,
+    getAvatarUrl,
+    playersWithOneCard,
+    onClaimUno: handleClaimUno,
+    me,
+  });
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#000" }}>
       <LinearGradient
@@ -575,40 +995,20 @@ export default function UnoGameScreen() {
           {/* Fila superior (1x1, 1x2, 1x3) */}
           <View style={responsiveStyles.responsiveMatrixRow}>
             <PlayerSlot
-              position="1x1"
-              player={positionedPlayers["1x1"]}
-              unoPlayers={unoPlayers}
-              shrink={shrinkOpponents}
-              responsiveStyles={responsiveStyles}
-              responsiveSize={responsiveSize}
+              {...getPlayerSlotProps("1x1", positionedPlayers["1x1"])}
             />
             <PlayerSlot
-              position="1x2"
-              player={positionedPlayers["1x2"]}
-              unoPlayers={unoPlayers}
-              shrink={shrinkOpponents}
-              responsiveStyles={responsiveStyles}
-              responsiveSize={responsiveSize}
+              {...getPlayerSlotProps("1x2", positionedPlayers["1x2"])}
             />
             <PlayerSlot
-              position="1x3"
-              player={positionedPlayers["1x3"]}
-              unoPlayers={unoPlayers}
-              shrink={shrinkOpponents}
-              responsiveStyles={responsiveStyles}
-              responsiveSize={responsiveSize}
+              {...getPlayerSlotProps("1x3", positionedPlayers["1x3"])}
             />
           </View>
 
           {/* Fila media (2x1, 2x3) - más cerca de la primera */}
           <View style={responsiveStyles.responsiveMatrixRow}>
             <PlayerSlot
-              position="2x1"
-              player={positionedPlayers["2x1"]}
-              unoPlayers={unoPlayers}
-              shrink={shrinkOpponents}
-              responsiveStyles={responsiveStyles}
-              responsiveSize={responsiveSize}
+              {...getPlayerSlotProps("2x1", positionedPlayers["2x1"])}
             />
             <View
               style={[
@@ -617,12 +1017,7 @@ export default function UnoGameScreen() {
               ]}
             />
             <PlayerSlot
-              position="2x3"
-              player={positionedPlayers["2x3"]}
-              unoPlayers={unoPlayers}
-              shrink={shrinkOpponents}
-              responsiveStyles={responsiveStyles}
-              responsiveSize={responsiveSize}
+              {...getPlayerSlotProps("2x3", positionedPlayers["2x3"])}
             />
           </View>
 
@@ -736,12 +1131,7 @@ export default function UnoGameScreen() {
           {/* Fila inferior (5x1, 5x2, 5x3) */}
           <View style={responsiveStyles.responsiveBottomRow}>
             <PlayerSlot
-              position="5x1"
-              player={positionedPlayers["5x1"]}
-              unoPlayers={unoPlayers}
-              shrink={shrinkOpponents}
-              responsiveStyles={responsiveStyles}
-              responsiveSize={responsiveSize}
+              {...getPlayerSlotProps("5x1", positionedPlayers["5x1"])}
             />
 
             {/* Mi posición (5x2) - avatar y nombre arriba de mis cartas */}
@@ -796,34 +1186,49 @@ export default function UnoGameScreen() {
                   {myDisplayName}
                 </Text>
               )}
+              {/* Mostrar mis puntos */}
+              {publicState.scores && publicState.scores[me] !== undefined && (
+                <Text
+                  style={[
+                    styles.placeholderSubtext,
+                    {
+                      fontSize: responsiveSize.fontSize.small,
+                      color: "#f39c12",
+                      fontWeight: "bold",
+                    },
+                  ]}
+                >
+                  {publicState.scores[me]}pts
+                </Text>
+              )}
             </View>
 
             <PlayerSlot
-              position="5x3"
-              player={positionedPlayers["5x3"]}
-              unoPlayers={unoPlayers}
-              shrink={shrinkOpponents}
-              responsiveStyles={responsiveStyles}
-              responsiveSize={responsiveSize}
+              {...getPlayerSlotProps("5x3", positionedPlayers["5x3"])}
             />
           </View>
         </View>
       </View>
 
       {/* ActionBar movida arriba de las cartas con altura fija para evitar layout shifts */}
-      <ActionBar
-        isMyTurn={isMyTurn}
-        hand={hand}
-        publicState={publicState}
-        me={me}
-        otherPlayers={otherPlayers}
-        onDraw={handleDraw}
-        onDeclareUno={handleDeclareUno}
-        onCallOut={handleCallOut}
-        onChallenge={handleChallenge}
-        onAcceptWild4={handleAcceptWild4}
-        onChatToggle={() => setChatVisible(true)}
-      />
+      {!publicState.gameEnded && (
+        <ActionBar
+          isMyTurn={isMyTurn}
+          hand={hand}
+          publicState={publicState}
+          me={me}
+          otherPlayers={otherPlayers}
+          onDraw={handleDraw}
+          onDeclareUno={handleDeclareUno}
+          onChallenge={handleChallenge}
+          onAcceptWild4={handleAcceptWild4}
+          onChatToggle={() => setChatVisible(true)}
+          playersWithOneCard={playersWithOneCard}
+          onClaimUno={handleClaimUno}
+          socket={socket}
+          roomId={roomId}
+        />
+      )}
 
       <View style={styles.handArea}>
         {/* Avatar movido a la posición 5x2 arriba - aquí solo van las cartas para ocupar todo el horizontal */}
@@ -832,20 +1237,45 @@ export default function UnoGameScreen() {
             data={hand}
             horizontal
             keyExtractor={(c) => c.id}
-            renderItem={renderCard}
+            renderItem={({ item, index }) => renderCard({ item, index })}
             contentContainerStyle={styles.handListContentFull}
             showsHorizontalScrollIndicator={false}
             style={styles.handListContainer}
+            extraData={`${hand.length}-${selectedCardId}-${isDragging}`} // Forzar re-render cuando cambien estos estados
+            removeClippedSubviews={false} // Evitar que se clipeen las cartas
+            initialNumToRender={10} // Renderizar más cartas inicialmente
+            maxToRenderPerBatch={5} // Renderizar en lotes más pequeños
+            updateCellsBatchingPeriod={50} // Actualizar más frecuentemente
+            windowSize={10} // Mantener más items en memoria
           />
         </View>
-        {hand.length === 0 && (
+        {hand.length === 0 && publicState.started && (
           <View style={styles.emptyHandOverlay}>
             <Text style={styles.emptyHandText}>Sin cartas recibidas</Text>
+            <Text style={styles.emptyHandSubtext}>
+              Jugador: {me || "No definido"} | Juego iniciado:{" "}
+              {publicState.started ? "Sí" : "No"}
+            </Text>
             <TouchableOpacity
               style={styles.reloadBtn}
-              onPress={() => socket.emit("requestPrivateHand", { roomId })}
+              onPress={() => {
+                console.log("[UNO][Frontend] Manual request for private hand");
+                socket.emit("requestPrivateHand", { roomId });
+              }}
             >
               <Text style={styles.reloadBtnText}>Recargar mano</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.reloadBtn,
+                { backgroundColor: "#555", marginTop: 8 },
+              ]}
+              onPress={() => {
+                console.log("[UNO][Frontend] Manual request for state");
+                socket.emit("getState", { roomId });
+              }}
+            >
+              <Text style={styles.reloadBtnText}>Recargar estado</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -889,43 +1319,36 @@ export default function UnoGameScreen() {
         </View>
       </Modal>
 
-      {selectedCardId && (
+      {/* Overlay de drag global para mostrar la carta fuera del contenedor */}
+      {isDragging && selectedCardId && (
         <Animated.View
-          {...panResponder.panHandlers}
           style={[
             styles.dragOverlayCard,
             {
               transform: [
                 { translateY: dragY },
                 { translateX: dragX },
-                { scale: 0.9 }, // carta seleccionada más chica
+                { scale: 1.0 },
               ],
             },
           ]}
-          pointerEvents="auto"
+          pointerEvents="none"
         >
           {(() => {
             const card = hand.find((c) => c.id === selectedCardId);
             if (!card) return null;
             return (
-              <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={() => {
-                  // Tap en la carta grande juega la carta
-                  playCard(card);
-                  setSelectedCardId(null);
-                }}
-              >
-                <Image
-                  source={getUnoCardImage(card)}
-                  style={styles.dragImageSmall}
-                  resizeMode="contain"
-                />
-              </TouchableOpacity>
+              <Image
+                source={getUnoCardImage(card)}
+                style={styles.dragImageSmall}
+                resizeMode="contain"
+              />
             );
           })()}
         </Animated.View>
       )}
+
+      {/* Overlay de drag eliminado - ahora las cartas se arrastran desde su posición original */}
 
       {/* Chat Toasts */}
       <ChatToasts
@@ -933,6 +1356,7 @@ export default function UnoGameScreen() {
         onItemComplete={(id) =>
           setToastMessages((prev) => prev.filter((m) => m.id !== id))
         }
+        extraContainerStyle={chatToastsExtraStyle}
       />
 
       {/* Chat Panel */}
@@ -965,6 +1389,116 @@ export default function UnoGameScreen() {
         getAvatarUrl={getAvatarUrl}
         onClose={() => setChallengeResult(null)}
       />
+
+      {/* UNO Claim Result Modal */}
+      <UnoClaimResultModal
+        visible={!!unoClaimResult}
+        unoClaimResult={unoClaimResult}
+        getAvatarUrl={getAvatarUrl}
+        onClose={() => setUnoClaimResult(null)}
+        currentColor={publicState.currentColor}
+      />
+
+      {/* Game Summary Modal */}
+      <UnoGameSummaryModal
+        visible={gameSummaryVisible}
+        players={publicState.players}
+        winner={publicState.winner}
+        finalGameData={finalGameData} // Pasar los datos finales del juego
+        playersReady={playersReady}
+        me={me}
+        getAvatarUrl={getAvatarUrl} // Pasar la función getAvatarUrl
+        onClose={handleCloseSummary}
+        onPlayAgain={handlePlayAgain}
+        onSendMessage={async (messageData) => {
+          const mePlayer = publicState.players.find((p) => p.id === me);
+          if (!mePlayer) return;
+          const fullMessage = {
+            ...messageData,
+            player: {
+              id: mePlayer.id,
+              name: mePlayer.name,
+              username: mePlayer.username,
+              avatarId: mePlayer.avatarId,
+            },
+            timestamp: Date.now(),
+          };
+          socket.emit("sendChatMessage", { roomId, message: fullMessage });
+        }}
+      />
+
+      {/* Round End Modal */}
+      <RoundEndModal
+        visible={roundEndVisible}
+        roundData={roundEndData}
+        getAvatarUrl={getAvatarUrl}
+        onClose={() => {
+          setRoundEndVisible(false);
+          setRoundEndData(null);
+        }}
+      />
+
+      {/* Debug Panel - Solo en desarrollo */}
+      <DebugPanel
+        players={publicState.players || []}
+        roomId={roomId}
+        socket={socket}
+        visible={publicState.started && !publicState.gameEnded}
+      />
+
+      {/* Contador 5-4-3-2-1 */}
+      {countdown && (
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.8)",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000000,
+          }}
+        >
+          <View
+            style={{
+              width: 200,
+              height: 200,
+              borderRadius: 100,
+              backgroundColor: "#e74c3c",
+              alignItems: "center",
+              justifyContent: "center",
+              shadowColor: "#000",
+              shadowOpacity: 0.3,
+              shadowRadius: 10,
+              shadowOffset: { width: 0, height: 5 },
+              elevation: 10,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 80,
+                fontWeight: "800",
+                color: "#fff",
+              }}
+            >
+              {countdown}
+            </Text>
+          </View>
+          <Text
+            style={{
+              marginTop: 30,
+              fontSize: 24,
+              fontWeight: "700",
+              color: "#fff",
+              textAlign: "center",
+            }}
+          >
+            Nueva partida comenzando...
+          </Text>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -976,6 +1510,12 @@ function PlayerSlot({
   shrink,
   responsiveStyles,
   responsiveSize,
+  scores,
+  eliminatedPlayers,
+  getAvatarUrl,
+  playersWithOneCard,
+  onClaimUno,
+  me,
 }) {
   if (player) {
     // Si hay un jugador asignado, mostrar el componente Opponent normal
@@ -986,16 +1526,23 @@ function PlayerSlot({
         shrink={shrink}
         responsiveStyles={responsiveStyles}
         responsiveSize={responsiveSize}
+        scores={scores}
+        eliminatedPlayers={eliminatedPlayers}
+        getAvatarUrl={getAvatarUrl}
+        playersWithOneCard={playersWithOneCard}
+        onClaimUno={onClaimUno}
+        me={me}
       />
     );
   }
 
-  // Si no hay jugador, mostrar placeholder
+  // Si no hay jugador, mostrar placeholder (visible solo si SHOW_DEBUG está habilitado)
   return (
     <View
       style={[
         responsiveStyles.responsivePlayerSlot,
         shrink && { transform: [{ scale: 0.8 }] },
+        !SHOW_DEBUG && { opacity: 0 }, // Invisible pero mantiene el espacio
       ]}
     >
       <View style={responsiveStyles.responsivePlaceholderCircle}>
@@ -1376,6 +1923,12 @@ const styles = StyleSheet.create({
     fontSize: 12, // Reducido de 14 a 12
     marginTop: 2, // Reducido de 4 a 2
   },
+  opponentScore: {
+    color: "#f39c12",
+    fontWeight: "600",
+    fontSize: 10,
+    marginTop: 1,
+  },
   unoBadge: {
     color: "#e74c3c",
     fontWeight: "800",
@@ -1390,6 +1943,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#222",
     justifyContent: "center",
+    overflow: "visible",
   },
   handListContentFull: {
     alignItems: "center",
@@ -1404,6 +1958,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: "100%",
     paddingHorizontal: 10,
+    overflow: "visible",
   },
   cardWrapper: {
     width: 72,
@@ -1411,10 +1966,46 @@ const styles = StyleSheet.create({
     marginRight: -35,
     alignItems: "center",
     justifyContent: "center",
+    borderRadius: 12,
+    overflow: "hidden", // Evita que bordes superpuestos generen líneas claras
+    position: "relative", // Necesario para que zIndex funcione de forma consistente (Android)
   },
   cardImage: {
     width: 72,
     height: 112,
+  },
+  cardGlowContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardGlow: {
+    position: "absolute",
+    width: 72,
+    height: 112,
+    borderRadius: 12,
+    backgroundColor: "#f5c54233", // suave amarillo translúcido
+    shadowColor: "#f1c40f",
+    shadowOpacity: 0.9,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 8,
+  },
+  cardDisabledOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    // Overlay simple sin bordes redondeados para evitar artefactos blancos
+    backgroundColor: "rgba(0,0,0,0.35)",
+    // Remover borderRadius para evitar rayas blancas por desalineación
+    zIndex: 20,
+    elevation: 20,
   },
   actionBarContainer: {
     flexDirection: "row",
@@ -1450,6 +2041,12 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.4)",
   },
   emptyHandText: { color: "#fff", marginBottom: 8 },
+  emptyHandSubtext: {
+    color: "#bbb",
+    fontSize: 12,
+    marginBottom: 8,
+    textAlign: "center",
+  },
   reloadBtn: {
     backgroundColor: "#444",
     paddingHorizontal: 12,
@@ -1577,13 +2174,21 @@ function Opponent({
   shrink,
   responsiveStyles,
   responsiveSize,
+  scores,
+  eliminatedPlayers,
+  getAvatarUrl,
+  playersWithOneCard,
+  onClaimUno,
+  me,
 }) {
   const unoFlag = unoPlayers.find((u) => u.playerId === player.id);
   const back = getUnoBackImage();
   const stacks = Math.min(player.handCount, 6);
   const arr = Array.from({ length: stacks });
   const displayName = player.name || player.username || "?";
-  const avatarUrl = player.avatarUrl;
+  const avatarUrl = getAvatarUrl(player.username);
+  const playerScore = scores[player.id] || 0;
+  const isEliminated = eliminatedPlayers.includes(player.id);
 
   // Usar tamaños responsivos si están disponibles, si no, usar estilos fijos
   const avatarStyle = responsiveStyles
@@ -1595,7 +2200,11 @@ function Opponent({
 
   return (
     <View
-      style={[styles.opponentBox, shrink && { transform: [{ scale: 0.9 }] }]}
+      style={[
+        styles.opponentBox,
+        shrink && { transform: [{ scale: 0.9 }] },
+        isEliminated && { opacity: 0.5 },
+      ]}
     >
       {avatarUrl ? (
         <Image
@@ -1608,6 +2217,7 @@ function Opponent({
                 height: responsiveSize.avatarSize * 0.85,
                 borderRadius: (responsiveSize.avatarSize * 0.85) / 2,
               },
+            isEliminated && { borderColor: "#e74c3c" },
           ]}
         />
       ) : (
@@ -1620,6 +2230,7 @@ function Opponent({
                 height: responsiveSize.avatarSize * 0.85,
                 borderRadius: (responsiveSize.avatarSize * 0.85) / 2,
               },
+            isEliminated && { borderColor: "#e74c3c" },
           ]}
         >
           <Text
@@ -1681,10 +2292,14 @@ function Opponent({
             marginTop: 2,
             fontSize: responsiveSize ? responsiveSize.fontSize.small : 11,
           },
+          isEliminated && {
+            color: "#e74c3c",
+            textDecorationLine: "line-through",
+          },
         ]}
         numberOfLines={1}
       >
-        {displayName}
+        {displayName} {isEliminated && "(ELIM)"}
       </Text>
       <Text
         style={[
@@ -1693,6 +2308,15 @@ function Opponent({
         ]}
       >
         {player.handCount}
+      </Text>
+      <Text
+        style={[
+          styles.opponentScore,
+          { fontSize: responsiveSize ? responsiveSize.fontSize.small : 10 },
+          isEliminated && { color: "#e74c3c" },
+        ]}
+      >
+        {playerScore}pts
       </Text>
       {unoFlag && (
         <Text
@@ -1704,6 +2328,42 @@ function Opponent({
           UNO{unoFlag.graceRemainingMs > 0 ? "*" : ""}
         </Text>
       )}
+
+      {/* Botón de reclamar UNO */}
+      {playersWithOneCard &&
+        playersWithOneCard.includes(player.id) &&
+        onClaimUno &&
+        !unoFlag &&
+        !isEliminated && (
+          <TouchableOpacity
+            style={{
+              position: "absolute",
+              bottom: -5,
+              right: -5,
+              backgroundColor: "#e74c3c",
+              borderRadius: 12,
+              padding: 4,
+              borderWidth: 1,
+              borderColor: "#fff",
+              shadowColor: "#000",
+              shadowOpacity: 0.3,
+              shadowRadius: 3,
+              shadowOffset: { width: 1, height: 1 },
+              elevation: 3,
+            }}
+            onPress={() => onClaimUno(player.id)}
+          >
+            <Text
+              style={{
+                color: "#fff",
+                fontSize: 8,
+                fontWeight: "bold",
+              }}
+            >
+              UNO!
+            </Text>
+          </TouchableOpacity>
+        )}
     </View>
   );
 }
@@ -1716,11 +2376,29 @@ function ActionBar({
   otherPlayers,
   onDraw,
   onDeclareUno,
-  onCallOut,
   onChallenge,
   onAcceptWild4,
   onChatToggle,
+  playersWithOneCard,
+  onClaimUno,
+  socket,
+  roomId,
 }) {
+  // Forzar re-render para actualizar graceRemainingMs en tiempo real
+  const [_, force] = useState(0);
+  useEffect(() => {
+    // Solo activar el temporizador si hay jugadores en estado UNO
+    const unoData = publicState.uno || [];
+    if (unoData.length > 0 && socket && roomId) {
+      const id = setInterval(() => {
+        force((x) => x + 1);
+        // Solicitar estado actualizado al backend para obtener graceRemainingMs actualizado
+        socket.emit("getState", { roomId });
+      }, 300);
+      return () => clearInterval(id);
+    }
+  }, [publicState.uno, socket, roomId]);
+
   const unoData = publicState.uno || [];
   const myHandSize = hand.length;
   const pending = publicState.pendingDrawCount;
@@ -1728,11 +2406,7 @@ function ActionBar({
   const challenge = publicState.wild4Challenge;
 
   const canDeclareUno =
-    isMyTurn && myHandSize === 2 && !unoData.find((u) => u.playerId === me);
-  const canCallOut = otherPlayers.some((p) => {
-    const flag = unoData.find((u) => u.playerId === p.id);
-    return flag && !flag.declared && flag.graceRemainingMs === 0;
-  });
+    myHandSize === 1 && unoData.find((u) => u.playerId === me && !u.declared);
 
   // Challenge activo para mí (soy target del +4 y aún dentro de ventana)
   const challengeActive = challenge && challenge.targetPlayer === me;
@@ -1742,6 +2416,38 @@ function ActionBar({
     challenge &&
     challenge.eligibleChallengers &&
     challenge.eligibleChallengers.includes(me);
+
+  // Detectar jugadores que pueden ser reclamados por UNO
+  const playersToClaimUno = otherPlayers.filter((p) => {
+    // Buscar en unoData si este jugador tiene información de UNO
+    const unoFlag = unoData.find((u) => u.playerId === p.id);
+
+    // Condiciones para poder reclamar:
+    // 1. El jugador tiene 1 carta (está en playersWithOneCard O tiene unoFlag)
+    // 2. No ha declarado UNO (declared = false)
+    // 3. El período de gracia ha expirado (graceRemainingMs <= 0)
+    const hasOneCard = playersWithOneCard?.includes(p.id) || !!unoFlag;
+    const hasNotDeclaredUno = unoFlag && !unoFlag.declared;
+    const graceExpired = unoFlag && unoFlag.graceRemainingMs <= 0;
+
+    console.log(
+      `[UNO DEBUG] Player ${p.name}: hasOneCard=${hasOneCard}, hasNotDeclaredUno=${hasNotDeclaredUno}, graceExpired=${graceExpired}, graceRemainingMs=${unoFlag?.graceRemainingMs}, declared=${unoFlag?.declared}`
+    );
+
+    return hasOneCard && hasNotDeclaredUno && graceExpired;
+  });
+
+  // Logs de debug más detallados
+  if (unoData.length > 0) {
+    console.log(`[UNO DEBUG] === Estado UNO ===`);
+    console.log(`[UNO DEBUG] playersWithOneCard:`, playersWithOneCard);
+    console.log(`[UNO DEBUG] unoData:`, unoData);
+    console.log(
+      `[UNO DEBUG] playersToClaimUno:`,
+      playersToClaimUno.map((p) => p.name)
+    );
+    console.log(`[UNO DEBUG] ==================`);
+  }
 
   // Caso especial: si challengeActive => reemplazamos Robar por botones Desafiar / Tomar +N
   // 'Tomar +N' ejecuta onDraw (paga las cartas acumuladas) y avanza turno.
@@ -1815,15 +2521,15 @@ function ActionBar({
             <Text style={styles.actionText}>Decir UNO</Text>
           </TouchableOpacity>
         )}
-        {canCallOut && (
+        {playersToClaimUno.length > 0 && (
           <TouchableOpacity
             style={[styles.actionBtn, styles.dangerBtn]}
             onPress={() => {
-              const target = otherPlayers.find((p) => {
-                const f = unoData.find((u) => u.playerId === p.id);
-                return f && !f.declared && f.graceRemainingMs === 0;
-              });
-              if (target) onCallOut(target.id);
+              // Si hay múltiples jugadores, tomar el primero (podrías agregar lógica más sofisticada)
+              const targetPlayer = playersToClaimUno[0];
+              if (targetPlayer && onClaimUno) {
+                onClaimUno(targetPlayer.id);
+              }
             }}
           >
             <Text style={styles.actionText}>Acusar</Text>

@@ -42,6 +42,7 @@ export default function Waiting() {
       hostId: null,
       started: false,
       cardsPerPlayer: 1,
+      pointsToWin: 500, // Configuración para UNO
     }
   );
   const [me, setMe] = useState(null);
@@ -158,6 +159,7 @@ export default function Waiting() {
         const safeState = {
           ...s,
           players: s.players || [],
+          pointsToWin: s.pointsToWin || 500, // Valor por defecto para UNO
         };
         console.log(
           "🔄 Actualizando estado con players count:",
@@ -252,6 +254,12 @@ export default function Waiting() {
     setChangingCards(true);
     setState((prev) => ({ ...prev, cardsPerPlayer: n }));
     socket.emit("configure", { roomId, config: { cardsPerPlayer: n } });
+  };
+  const setPoints = (points) => {
+    if (changingCards) return;
+    setChangingCards(true);
+    setState((prev) => ({ ...prev, pointsToWin: points }));
+    socket.emit("configure", { roomId, config: { pointsToWin: points } });
   };
 
   // Ordenar jugadores con el anfitrión primero
@@ -656,6 +664,55 @@ export default function Waiting() {
                         {"\n"}• Cada jugador recibe 3 cartas por mano
                         {"\n"}• Incluye Envido, Truco y Flor
                       </Text>
+                    </>
+                  )}
+
+                  {/* Configuración específica para UNO */}
+                  {gameType === "uno" && (
+                    <>
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          fontWeight: "600",
+                          color: "#7f8c8d",
+                          marginBottom: 8,
+                        }}
+                      >
+                        Puntos para ganar:
+                      </Text>
+
+                      <View style={{ flexDirection: "row", marginBottom: 16 }}>
+                        {[300, 500, 700].map((points) => (
+                          <TouchableOpacity
+                            disabled={changingCards || !isHost} // Solo el anfitrión puede cambiar
+                            key={points}
+                            onPress={() => isHost && setPoints(points)} // Solo el anfitrión puede ejecutar
+                            style={{
+                              backgroundColor:
+                                state.pointsToWin === points
+                                  ? "#e67e22"
+                                  : "#ecf0f1",
+                              paddingVertical: 8,
+                              paddingHorizontal: 16,
+                              borderRadius: 8,
+                              marginRight: 8,
+                              opacity: changingCards || !isHost ? 0.6 : 1,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                color:
+                                  state.pointsToWin === points
+                                    ? "white"
+                                    : "#7f8c8d",
+                                fontWeight: "600",
+                              }}
+                            >
+                              {points}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     </>
                   )}
 

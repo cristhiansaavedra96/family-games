@@ -31,5 +31,8 @@ Cosas a mejorar, haz un todolist y vamos una por una:
 3. Debo poder arrastrar las cartas directamente desde mi mano al centro de la mesa y no seleccionarla primero, lo de "selección" es hacer esa carta más visible que las otras, no levantar la carta. hacerla más grande en el lugar y mover las otras un poquito a los costados en todo caso.
 4. Si termina la partida y yo jugué un +4 por ejemplo, me sale a mi mismo como acción "Tomar +4" y en el centro de la mesa dice "Ganaste +4", cosa que está mal. Una vez la partida termina, debe desaparecer la barra de acciones.
 5. Cuando me quedan dos cartas y juego la última, se me debe habilitar el botón de decir "UNO", no debe salirme un cartel de que tengo que decir uno.
+6. Si comienzo la partida con un cancelar, cambiar turno, debe pasarse el turno al otro.
+7. Si comienzo la partida con un cambio color, me debe salir para elegir el color.
+8. Al terminar la partida, al igual que en BINGO, debe salir el GameSummary y la posibilidad de jugar de nuevo, copiar esa funcionalidad.
 
 Ayudame a completar esto.

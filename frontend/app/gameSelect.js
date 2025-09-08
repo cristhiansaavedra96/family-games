@@ -59,6 +59,8 @@ export default function Games() {
 
   // Obtener juegos disponibles del registro centralizado
   const games = getAvailableGames();
+  //ordenar games por los que no están disabled primero
+  games.sort((a, b) => (a.disabled === b.disabled ? 0 : a.disabled ? 1 : -1));
 
   const selectGame = (gameId) => {
     //if game has property "disabled" in true, return

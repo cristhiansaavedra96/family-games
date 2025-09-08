@@ -1,5 +1,6 @@
 const BaseGameHandler = require("../BaseGameHandler");
 const TurnManager = require("../../shared/TurnManager");
+const statsService = require("../../services/statsService");
 const {
   buildDeck,
   shuffle,
@@ -11,6 +12,7 @@ const {
   canPlayCard,
   applyCardEffects,
   randomColor,
+  calculateHandPoints,
 } = require("./logic");
 
 class UnoGameHandler extends BaseGameHandler {
@@ -21,6 +23,11 @@ class UnoGameHandler extends BaseGameHandler {
 
     super(room);
     this.io = io;
+
+    // Configuración específica de UNO
+    if (!this.room.config.pointsToWin) {
+      this.room.config.pointsToWin = 500; // Valor por defecto
+    }
 
     this.turnManager = new TurnManager({
       maxSkips: 1,
@@ -45,7 +52,7 @@ class UnoGameHandler extends BaseGameHandler {
     this.unoState = {
       // playerId -> { declared:boolean, atOneSince:number, penalized:boolean }
       players: new Map(),
-      graceMs: 3000,
+      graceMs: 1500, // 1.5 segundos de gracia para decir UNO
     };
 
     // Estado para challenge de wild draw 4
@@ -57,11 +64,21 @@ class UnoGameHandler extends BaseGameHandler {
   }
 
   getGameConfig() {
-    return { gameKey: "uno" };
+    return {
+      gameKey: "uno",
+      pointsToWin: this.room.config.pointsToWin || 500,
+    };
   }
 
   setGameConfig(newConfig) {
-    // Placeholder para configuraciones futuras
+    // Validar y aplicar configuraciones específicas de UNO
+    if (newConfig.pointsToWin !== undefined) {
+      const allowed = [300, 500, 700];
+      const points = Number(newConfig.pointsToWin);
+      if (allowed.includes(points)) {
+        this.room.config.pointsToWin = points;
+      }
+    }
     return true;
   }
 
@@ -76,54 +93,87 @@ class UnoGameHandler extends BaseGameHandler {
     this.gameState.started = true;
     this.gameState.players = playerIds;
 
+    // Inicializar puntos si es la primera partida
+    if (
+      !this.gameState.scores ||
+      Object.keys(this.gameState.scores).length === 0
+    ) {
+      this.gameState.scores = {};
+      this.gameState.eliminatedPlayers = new Set();
+      // Inicializar índice del jugador inicial aleatorio para la primera partida
+      this.gameState.startingPlayerIndex = Math.floor(
+        Math.random() * playerIds.length
+      );
+      playerIds.forEach((pid) => {
+        this.gameState.scores[pid] = 0;
+      });
+    }
+
+    // Limpiar jugadores nuevos que no estén en scores
+    playerIds.forEach((pid) => {
+      if (!(pid in this.gameState.scores)) {
+        this.gameState.scores[pid] = 0;
+      }
+    });
+
     let deck = buildDeck();
     shuffle(deck);
     this.gameState.drawPile = deck;
     dealInitialHands(this.gameState, playerIds, 7);
 
-    // Voltear primera carta que no sea wild_draw4
-    let first;
-    while (deck.length) {
-      first = deck.pop();
-      if (first.kind !== "wild_draw4") break;
-      // poner al fondo si es wild draw4
-      deck.unshift(first);
-      first = null;
-    }
-    if (!first) {
-      first = deck.pop();
-    }
+    // Voltear primera carta - ahora puede ser cualquier carta
+    let first = deck.pop();
     this.gameState.discardPile.push(first);
-    this.gameState.currentColor = first.color || randomColor();
+
+    // Asignar color inicial - siempre aleatorio para wild/wild_draw4
+    if (first.kind === "wild" || first.kind === "wild_draw4") {
+      this.gameState.currentColor = randomColor();
+    } else {
+      this.gameState.currentColor = first.color;
+    }
     this.gameState.currentKind = first.kind;
     this.gameState.currentValue = first.value;
 
-    // Efecto inicial si aplica (skip, reverse, draw2)
-    if (["skip", "reverse", "draw2"].includes(first.kind)) {
+    // Inicializar turnos primero
+    this.turnManager.initialize(playerIds);
+
+    // Usar el índice del jugador inicial guardado
+    const startingPlayer = playerIds[this.gameState.startingPlayerIndex];
+    this.turnManager.setCurrentPlayer(startingPlayer);
+
+    // Efecto inicial si aplica
+    if (["skip", "reverse", "draw2", "wild_draw4"].includes(first.kind)) {
       if (first.kind === "reverse" && playerIds.length === 2) {
         // Reverse con 2 jugadores actúa como skip
-        this.turnManager.initialize(playerIds);
-        this.turnManager.setCurrentPlayer(playerIds[0]);
         this.turnManager.skipNext();
-      } else {
-        this.turnManager.initialize(playerIds);
-        this.turnManager.setCurrentPlayer(playerIds[0]);
-        if (first.kind === "skip") this.turnManager.skipNext();
-        if (first.kind === "reverse") this.turnManager.reverseDirection();
-        if (first.kind === "draw2") {
-          this.gameState.pendingDrawType = "draw2";
-          this.gameState.pendingDrawCount = 2;
-        }
+      } else if (first.kind === "skip") {
+        this.turnManager.skipNext();
+      } else if (first.kind === "reverse") {
+        this.turnManager.reverseDirection();
+      } else if (first.kind === "draw2") {
+        this.gameState.pendingDrawType = "draw2";
+        this.gameState.pendingDrawCount = 2;
+      } else if (first.kind === "wild_draw4") {
+        // Si empieza con +4, el primer jugador debe robar 4
+        this.gameState.pendingDrawType = "wild_draw4";
+        this.gameState.pendingDrawCount = 4;
       }
-    } else {
-      this.turnManager.initialize(playerIds);
-      this.turnManager.setCurrentPlayer(playerIds[0]);
     }
 
     this.gameState.currentPlayer = this.turnManager.getCurrentPlayer();
 
     // Broadcast manos privadas iniciales
     this.sendPrivateHands();
+
+    // Emitir que el juego ha comenzado
+    this.io.to(this.room.id).emit("gameStarted", {
+      players: this.gameState.players,
+      firstCard: first,
+      currentPlayer: this.gameState.currentPlayer,
+    });
+
+    // Enviar estado público actualizado inmediatamente
+    this.broadcastPublicState();
 
     return true;
   }
@@ -153,7 +203,7 @@ class UnoGameHandler extends BaseGameHandler {
     this.io.to(this.room.id).emit("turnChanged", info);
   }
 
-  playCard(socketId, cardId, chosenColor) {
+  async playCard(socketId, cardId, chosenColor) {
     if (!this.gameState.started || this.gameState.gameEnded)
       return { ok: false, reason: "not_started" };
     if (this.gameState.currentPlayer !== socketId)
@@ -257,12 +307,32 @@ class UnoGameHandler extends BaseGameHandler {
       }
     }
 
-    // Verificar victoria
+    // Verificar victoria de ronda
     if (hand.length === 0) {
-      this.gameState.winner = socketId;
-      this.gameState.gameEnded = true;
-      this.io.to(this.room.id).emit("winner", { playerId: socketId });
-      return { ok: true, winner: socketId };
+      console.log(`[UNO] Player ${socketId} won the round!`);
+      this.gameState.roundWinner = socketId;
+
+      // Verificar si estamos en modo de puntos
+      const pointsToWin = this.room.config.pointsToWin;
+      console.log(
+        `[UNO] Points mode: ${pointsToWin ? pointsToWin : "disabled"}`
+      );
+
+      if (pointsToWin) {
+        // Modo de puntos - pero primero emitir estado actualizado
+        this.broadcastPublicState();
+        await this.handleRoundEnd(socketId);
+      } else {
+        // Modo clásico - terminar juego inmediatamente
+        this.gameState.gameEnded = true;
+        this.gameState.winner = socketId;
+        this.room.gameEnded = true;
+        // Emitir estado actualizado antes del winner
+        this.broadcastPublicState();
+        this.io.to(this.room.id).emit("winner", { playerId: socketId });
+      }
+
+      return { ok: true, roundWinner: socketId };
     }
 
     // Actualizar estado UNO para este jugador tras jugar
@@ -274,7 +344,206 @@ class UnoGameHandler extends BaseGameHandler {
     // Enviar manos privadas actualizadas solo al jugador
     this.io.to(socketId).emit("privateHand", { hand });
 
+    // Enviar estado público actualizado a todos los jugadores
+    this.broadcastPublicState();
+
     return { ok: true };
+  }
+
+  // Manejar el final de una ronda
+  async handleRoundEnd(roundWinner) {
+    console.log(`[UNO] handleRoundEnd called for winner: ${roundWinner}`);
+
+    // Calcular puntos de todos los jugadores
+    const roundScores = {};
+
+    this.gameState.players.forEach((pid) => {
+      if (pid === roundWinner) {
+        roundScores[pid] = 0; // El ganador no suma puntos
+      } else {
+        const hand = this.gameState.hands[pid] || [];
+        const points = calculateHandPoints(hand);
+        roundScores[pid] = points;
+
+        // Sumar puntos al acumulado
+        this.gameState.scores[pid] = (this.gameState.scores[pid] || 0) + points;
+      }
+    });
+
+    console.log(`[UNO] Round scores:`, roundScores);
+    console.log(`[UNO] Total scores:`, this.gameState.scores);
+
+    // Crear lista de jugadores ordenados por puntos totales
+    const playersWithScores = this.gameState.players
+      .map((pid) => {
+        const player = this.room.players.get(pid) || {};
+        return {
+          id: pid,
+          name: player.name || player.username || `Jugador ${pid.slice(-4)}`,
+          username: player.username,
+          avatarId: player.avatarId,
+          roundPoints: roundScores[pid] || 0,
+          totalPoints: this.gameState.scores[pid] || 0,
+          isWinner: pid === roundWinner,
+          isEliminated: this.gameState.eliminatedPlayers.has(pid),
+        };
+      })
+      .sort((a, b) => a.totalPoints - b.totalPoints); // Ordenar por menor puntaje total
+
+    // Verificar eliminaciones
+    const pointsToWin = this.room.config.pointsToWin || 500;
+    let newlyEliminated = [];
+
+    this.gameState.players.forEach((pid) => {
+      if (
+        this.gameState.scores[pid] >= pointsToWin &&
+        !this.gameState.eliminatedPlayers.has(pid)
+      ) {
+        this.gameState.eliminatedPlayers.add(pid);
+        newlyEliminated.push(pid);
+      }
+    });
+
+    // Verificar si queda solo un jugador sin eliminar (ganador final)
+    const remainingPlayers = this.gameState.players.filter(
+      (pid) => !this.gameState.eliminatedPlayers.has(pid)
+    );
+
+    if (remainingPlayers.length <= 1) {
+      // Fin del juego
+      this.gameState.gameEnded = true;
+      this.gameState.winner = remainingPlayers[0] || null;
+      this.room.gameEnded = true;
+
+      // Guardar estadísticas del juego
+      await this.saveGameStats(this.gameState.winner);
+
+      this.io.to(this.room.id).emit("roundEnd", {
+        roundWinner,
+        playersWithScores,
+        newlyEliminated,
+        isGameEnd: true,
+        finalWinner: this.gameState.winner,
+      });
+
+      // Emitir evento de fin de juego después de mostrar resultado de ronda
+      setTimeout(() => {
+        this.io
+          .to(this.room.id)
+          .emit("winner", { playerId: this.gameState.winner });
+      }, 10000);
+    } else {
+      // Continuar con siguiente ronda
+      console.log(`[UNO] Emitting roundEnd event to room ${this.room.id}`);
+
+      this.io.to(this.room.id).emit("roundEnd", {
+        roundWinner,
+        playersWithScores,
+        newlyEliminated,
+        isGameEnd: false,
+        nextRoundCountdown: 10,
+      });
+
+      // Iniciar siguiente ronda después del countdown
+      setTimeout(() => {
+        this.startNextRound();
+      }, 10000);
+    }
+  }
+
+  // Iniciar la siguiente ronda
+  startNextRound() {
+    // Limpiar estados de la ronda anterior
+    this.gameState.started = true;
+    this.gameState.hands = {};
+    this.gameState.drawPile = [];
+    this.gameState.discardPile = [];
+    this.gameState.currentPlayer = null;
+    this.gameState.pendingDrawCount = 0;
+    this.gameState.pendingDrawType = null;
+    this.gameState.roundWinner = null;
+    this.wild4Challenge = null;
+    this.unoState.players.clear();
+
+    // Solo jugadores no eliminados
+    const activePlayers = this.gameState.players.filter(
+      (pid) => !this.gameState.eliminatedPlayers.has(pid)
+    );
+
+    if (activePlayers.length < 2) {
+      // No hay suficientes jugadores para continuar
+      return;
+    }
+
+    let deck = buildDeck();
+    shuffle(deck);
+    this.gameState.drawPile = deck;
+    dealInitialHands(this.gameState, activePlayers, 7);
+
+    // Voltear primera carta - ahora puede ser cualquier carta
+    let first = deck.pop();
+    this.gameState.discardPile.push(first);
+
+    // Asignar color inicial - siempre aleatorio para wild/wild_draw4
+    if (first.kind === "wild" || first.kind === "wild_draw4") {
+      this.gameState.currentColor = randomColor();
+    } else {
+      this.gameState.currentColor = first.color;
+    }
+    this.gameState.currentKind = first.kind;
+    this.gameState.currentValue = first.value;
+
+    // Inicializar turnos primero
+    this.turnManager.initialize(activePlayers);
+
+    // Rotar al siguiente jugador para la nueva ronda
+    // Encontrar el índice actual en la lista de jugadores activos y rotar
+    const allPlayers = this.gameState.players; // Lista original de jugadores
+    let currentStarterIndex = this.gameState.startingPlayerIndex;
+
+    // Buscar el siguiente jugador no eliminado comenzando desde el índice actual
+    let nextStarterIndex = (currentStarterIndex + 1) % allPlayers.length;
+    while (this.gameState.eliminatedPlayers.has(allPlayers[nextStarterIndex])) {
+      nextStarterIndex = (nextStarterIndex + 1) % allPlayers.length;
+    }
+
+    // Actualizar el índice del jugador inicial
+    this.gameState.startingPlayerIndex = nextStarterIndex;
+    const startingPlayer = allPlayers[nextStarterIndex];
+    this.turnManager.setCurrentPlayer(startingPlayer);
+
+    // Efecto inicial si aplica
+    if (["skip", "reverse", "draw2", "wild_draw4"].includes(first.kind)) {
+      if (first.kind === "reverse" && activePlayers.length === 2) {
+        // Reverse con 2 jugadores actúa como skip
+        this.turnManager.skipNext();
+      } else if (first.kind === "skip") {
+        this.turnManager.skipNext();
+      } else if (first.kind === "reverse") {
+        this.turnManager.reverseDirection();
+      } else if (first.kind === "draw2") {
+        this.gameState.pendingDrawType = "draw2";
+        this.gameState.pendingDrawCount = 2;
+      } else if (first.kind === "wild_draw4") {
+        // Si empieza con +4, el primer jugador debe robar 4
+        this.gameState.pendingDrawType = "wild_draw4";
+        this.gameState.pendingDrawCount = 4;
+      }
+    }
+
+    this.gameState.currentPlayer = this.turnManager.getCurrentPlayer();
+
+    // Broadcast manos privadas iniciales
+    this.sendPrivateHands();
+
+    this.io.to(this.room.id).emit("newRoundStarted", {
+      activePlayers,
+      firstCard: first,
+      currentPlayer: this.gameState.currentPlayer,
+    });
+
+    // Enviar estado público actualizado inmediatamente
+    this.broadcastPublicState();
   }
 
   advanceTurnAfterPlay(card, effects) {
@@ -357,6 +626,10 @@ class UnoGameHandler extends BaseGameHandler {
       this.gameState.pendingDrawType = null;
       // Avanzar turno después de pagar
       this.turnManager.nextTurn();
+
+      // Enviar estado público actualizado
+      this.broadcastPublicState();
+
       console.log("[UNO][UnoGameHandler.drawCard] stacked draw complete", {
         socketId,
         drew: toDraw,
@@ -375,6 +648,10 @@ class UnoGameHandler extends BaseGameHandler {
 
     // Avanzar turno al siguiente
     this.turnManager.nextTurn();
+
+    // Enviar estado público actualizado
+    this.broadcastPublicState();
+
     console.log("[UNO][UnoGameHandler.drawCard] normal draw complete", {
       socketId,
       drew: 1,
@@ -533,8 +810,8 @@ class UnoGameHandler extends BaseGameHandler {
       return { ok: false, reason: "grace_period" };
     }
 
-    // Penalizar +4 cartas
-    for (let i = 0; i < 4; i++) {
+    // Penalizar +2 cartas
+    for (let i = 0; i < 2; i++) {
       drawOne(this.gameState, targetPlayerId);
     }
     info.penalized = true;
@@ -546,9 +823,9 @@ class UnoGameHandler extends BaseGameHandler {
     this.io.to(this.room.id).emit("unoCalledOut", {
       target: targetPlayerId,
       by: socketId,
-      penalty: 4,
+      penalty: 2,
     });
-    return { ok: true, penalty: 4 };
+    return { ok: true, penalty: 2 };
   }
 
   // Public state consolidado con información de UNO y challenge
@@ -586,8 +863,10 @@ class UnoGameHandler extends BaseGameHandler {
           handCount: (this.gameState.hands[pid] || []).length,
           name: roomPlayer.name,
           username: roomPlayer.username,
-          avatarUrl: roomPlayer.avatarUrl,
           avatarId: roomPlayer.avatarId,
+          totalPoints: this.gameState.scores
+            ? this.gameState.scores[pid] || 0
+            : 0,
         };
       });
     }
@@ -616,8 +895,106 @@ class UnoGameHandler extends BaseGameHandler {
               deadline: this.wild4Challenge.timeoutAt,
             }
           : null,
+      scores: this.gameState.scores,
+      eliminatedPlayers: Array.from(this.gameState.eliminatedPlayers || []),
+      roundWinner: this.gameState.roundWinner,
       ...playersSection,
     };
+  }
+
+  // Método para enviar el estado público a todos los clientes
+  broadcastPublicState() {
+    const publicState = this.getPublicState();
+    this.io.to(this.room.id).emit("state", publicState);
+  }
+
+  // Guardar estadísticas del juego
+  async saveGameStats(winnerId) {
+    try {
+      console.log(
+        `[UNO] Saving game stats for room ${this.room.id}, winner: ${winnerId}`
+      );
+
+      // Preparar datos de jugadores para las estadísticas
+      const playerResults = {};
+
+      this.gameState.players.forEach((playerId) => {
+        const player = this.room.players.get(playerId);
+        if (player) {
+          const username = player.username || player.name;
+          if (username) {
+            // En UNO no hay "figuras" como en BINGO, solo registramos participación
+            playerResults[username] = []; // Array vacío, solo registramos participación
+          }
+        }
+      });
+
+      // Obtener el username del ganador
+      let winnerUsername = null;
+      if (winnerId) {
+        const winnerPlayer = this.room.players.get(winnerId);
+        if (winnerPlayer) {
+          winnerUsername = winnerPlayer.username || winnerPlayer.name;
+        }
+      }
+
+      // Registrar resultado del juego
+      await statsService.recordGameResult({
+        gameKey: "uno",
+        roomId: this.room.id,
+        winnerId: winnerUsername,
+        playersWithFigures: playerResults,
+      });
+
+      console.log(`[UNO] Game stats saved successfully`);
+    } catch (error) {
+      console.error(`[UNO] Error saving game stats:`, error);
+    }
+  }
+
+  // Método debug para hacer ganar a un jugador rápidamente
+  async debugWinPlayer(socketId, targetPlayerId) {
+    // Solo permitir en desarrollo o con una flag especial
+    if (process.env.NODE_ENV === "production") {
+      return { ok: false, reason: "debug_disabled_in_production" };
+    }
+
+    if (!this.gameState.started || this.gameState.gameEnded) {
+      return { ok: false, reason: "game_not_active" };
+    }
+
+    // Verificar que el jugador objetivo existe y está en la partida
+    if (!this.gameState.players.includes(targetPlayerId)) {
+      return { ok: false, reason: "player_not_in_game" };
+    }
+
+    console.log(
+      `[UNO][DEBUG] ${socketId} is making ${targetPlayerId} win instantly`
+    );
+
+    // Vaciar la mano del jugador objetivo (dejarlo con 0 cartas)
+    this.gameState.hands[targetPlayerId] = [];
+
+    // Establecer al jugador como ganador de la ronda
+    this.gameState.roundWinner = targetPlayerId;
+
+    // Verificar si estamos en modo de puntos
+    const pointsToWin = this.room.config.pointsToWin;
+
+    if (pointsToWin) {
+      // Modo de puntos - manejar como fin de ronda
+      this.broadcastPublicState();
+      await this.handleRoundEnd(targetPlayerId);
+    } else {
+      // Modo clásico - terminar juego inmediatamente
+      this.gameState.gameEnded = true;
+      this.gameState.winner = targetPlayerId;
+      this.room.gameEnded = true;
+      this.broadcastPublicState();
+      this.io.to(this.room.id).emit("winner", { playerId: targetPlayerId });
+    }
+
+    return { ok: true, winner: targetPlayerId };
   }
 }
 
