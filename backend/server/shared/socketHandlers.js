@@ -50,7 +50,7 @@ function createRoomHandlers({
         let avatarId = null;
 
         // Validar que el tipo de juego sea válido
-        const validGameKeys = ["bingo", "truco"]; // Agregar truco como juego válido
+        const validGameKeys = ["bingo", "truco", "uno"]; // Extendido con UNO
         const selectedGameKey =
           gameKey && validGameKeys.includes(gameKey) ? gameKey : "bingo";
 
@@ -385,7 +385,7 @@ function createRoomHandlers({
     // Jugar carta
     playCard:
       (socket) =>
-      ({ roomId, cardId }) => {
+      ({ roomId, cardId, chosenColor }) => {
         try {
           const rid = roomId || socket.data.roomId;
           if (!rid) {
@@ -402,7 +402,7 @@ function createRoomHandlers({
             return;
           }
 
-          const result = gameHandler.playCard(socket.id, cardId);
+          const result = gameHandler.playCard(socket.id, cardId, chosenColor);
           socket.emit("playCardResult", result);
 
           if (result.ok) {
@@ -411,6 +411,171 @@ function createRoomHandlers({
         } catch (error) {
           console.error("Error playing card:", error);
           socket.emit("playCardResult", { ok: false, reason: "server_error" });
+        }
+      },
+    // UNO: robar carta (o pagar acumulado)
+    drawCard:
+      (socket) =>
+      ({ roomId }) => {
+        try {
+          const rid = roomId || socket.data.roomId;
+          if (!rid) {
+            socket.emit("drawCardResult", { ok: false, reason: "no_room_id" });
+            return;
+          }
+          console.log("[UNO][socketHandlers] drawCard received", {
+            rid,
+            socketId: socket.id,
+          });
+          const gameHandler = getGameHandler(rid);
+          if (!gameHandler || !gameHandler.drawCard) {
+            socket.emit("drawCardResult", {
+              ok: false,
+              reason: "no_game_handler",
+            });
+            return;
+          }
+          const result = gameHandler.drawCard(socket.id);
+          console.log("[UNO][socketHandlers] drawCard result", result);
+          socket.emit("drawCardResult", result);
+          if (result.ok) {
+            broadcastRoomState(rid);
+          }
+        } catch (error) {
+          console.error("Error drawing card:", error);
+          socket.emit("drawCardResult", { ok: false, reason: "server_error" });
+        }
+      },
+    // UNO: declarar que está a una carta
+    declareUno:
+      (socket) =>
+      ({ roomId }) => {
+        try {
+          const rid = roomId || socket.data.roomId;
+          if (!rid) {
+            socket.emit("declareUnoResult", {
+              ok: false,
+              reason: "no_room_id",
+            });
+            return;
+          }
+          const gameHandler = getGameHandler(rid);
+          if (!gameHandler || !gameHandler.declareUno) {
+            socket.emit("declareUnoResult", {
+              ok: false,
+              reason: "no_game_handler",
+            });
+            return;
+          }
+          const result = gameHandler.declareUno(socket.id);
+          socket.emit("declareUnoResult", result);
+          if (result.ok) {
+            broadcastRoomState(rid);
+          }
+        } catch (e) {
+          console.error("Error declareUno:", e);
+          socket.emit("declareUnoResult", {
+            ok: false,
+            reason: "server_error",
+          });
+        }
+      },
+    // UNO: acusar a otro jugador que no dijo UNO
+    callOutUno:
+      (socket) =>
+      ({ roomId, targetPlayerId }) => {
+        try {
+          const rid = roomId || socket.data.roomId;
+          if (!rid) {
+            socket.emit("callOutUnoResult", {
+              ok: false,
+              reason: "no_room_id",
+            });
+            return;
+          }
+          const gameHandler = getGameHandler(rid);
+          if (!gameHandler || !gameHandler.callOutUno) {
+            socket.emit("callOutUnoResult", {
+              ok: false,
+              reason: "no_game_handler",
+            });
+            return;
+          }
+          const result = gameHandler.callOutUno(socket.id, targetPlayerId);
+          socket.emit("callOutUnoResult", result);
+          if (result.ok) {
+            broadcastRoomState(rid);
+          }
+        } catch (e) {
+          console.error("Error callOutUno:", e);
+          socket.emit("callOutUnoResult", {
+            ok: false,
+            reason: "server_error",
+          });
+        }
+      },
+    // UNO: desafiar wild draw 4
+    challengeWild4:
+      (socket) =>
+      ({ roomId }) => {
+        try {
+          const rid = roomId || socket.data.roomId;
+          if (!rid) {
+            socket.emit("challengeWild4Result", {
+              ok: false,
+              reason: "no_room_id",
+            });
+            return;
+          }
+          const gh = getGameHandler(rid);
+          if (!gh || !gh.challengeWild4) {
+            socket.emit("challengeWild4Result", {
+              ok: false,
+              reason: "no_game_handler",
+            });
+            return;
+          }
+          const result = gh.challengeWild4(socket.id);
+          socket.emit("challengeWild4Result", result);
+          if (result.ok) broadcastRoomState(rid);
+        } catch (e) {
+          console.error("Error challengeWild4:", e);
+          socket.emit("challengeWild4Result", {
+            ok: false,
+            reason: "server_error",
+          });
+        }
+      },
+    // UNO: aceptar wild draw 4 (no desafiar)
+    acceptWild4:
+      (socket) =>
+      ({ roomId }) => {
+        try {
+          const rid = roomId || socket.data.roomId;
+          if (!rid) {
+            socket.emit("acceptWild4Result", {
+              ok: false,
+              reason: "no_room_id",
+            });
+            return;
+          }
+          const gh = getGameHandler(rid);
+          if (!gh || !gh.acceptWild4) {
+            socket.emit("acceptWild4Result", {
+              ok: false,
+              reason: "no_game_handler",
+            });
+            return;
+          }
+          const result = gh.acceptWild4(socket.id);
+          socket.emit("acceptWild4Result", result);
+          if (result.ok) broadcastRoomState(rid);
+        } catch (e) {
+          console.error("Error acceptWild4:", e);
+          socket.emit("acceptWild4Result", {
+            ok: false,
+            reason: "server_error",
+          });
         }
       },
 

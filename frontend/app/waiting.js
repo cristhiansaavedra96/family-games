@@ -554,8 +554,10 @@ export default function Waiting() {
           >
             {/* Content */}
             <View style={{ padding: 16 }}>
-              {/* Game Configuration - Para Bingo y Truco */}
-              {(gameType === "bingo" || gameType === "truco") && (
+              {/* Game Configuration - Bingo / Truco / UNO */}
+              {(gameType === "bingo" ||
+                gameType === "truco" ||
+                gameType === "uno") && (
                 <View
                   style={{
                     backgroundColor: "#fff",
@@ -720,6 +722,34 @@ export default function Waiting() {
                             opacity: state.players?.length === 2 ? 1 : 0.7,
                           }}
                         />
+                      ) : gameType === "uno" ? (
+                        <Button
+                          title="Iniciar UNO"
+                          onPress={start}
+                          variant="primary"
+                          size="large"
+                          disabled={(state.players?.length || 0) < 2}
+                          icon={
+                            <Ionicons
+                              name={
+                                (state.players?.length || 0) >= 2
+                                  ? "play-circle"
+                                  : "people"
+                              }
+                              size={24}
+                              color="white"
+                            />
+                          }
+                          style={{
+                            backgroundColor:
+                              (state.players?.length || 0) >= 2
+                                ? "#e67e22"
+                                : "#95a5a6",
+                            borderRadius: 12,
+                            opacity:
+                              (state.players?.length || 0) >= 2 ? 1 : 0.7,
+                          }}
+                        />
                       ) : null}
 
                       {/* Mensaje de estado para Truco */}
@@ -736,6 +766,20 @@ export default function Waiting() {
                           Se necesitan exactamente 2 jugadores para iniciar
                         </Text>
                       )}
+                      {gameType === "uno" &&
+                        (state.players?.length || 0) < 2 && (
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              color: "#e67e22",
+                              textAlign: "center",
+                              marginTop: 8,
+                              fontWeight: "600",
+                            }}
+                          >
+                            Se necesitan al menos 2 jugadores para iniciar UNO
+                          </Text>
+                        )}
                     </>
                   )}
 

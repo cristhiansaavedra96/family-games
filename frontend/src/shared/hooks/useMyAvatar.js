@@ -1,9 +1,9 @@
 // src/hooks/useMyAvatar.js
 // Hook específico para manejar mi propio avatar de forma síncrona
-import { useState, useEffect, useCallback } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system';
-import { getUsername } from '../utils';
+import { useState, useEffect, useCallback } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as FileSystem from "expo-file-system";
+import { getUsername } from "../utils";
 
 export const useMyAvatar = () => {
   const [myAvatar, setMyAvatar] = useState(null);
@@ -20,8 +20,8 @@ export const useMyAvatar = () => {
     try {
       const [username, name, avatarPath] = await Promise.all([
         getUsername(),
-        AsyncStorage.getItem('profile:name'),
-        AsyncStorage.getItem('profile:avatar')
+        AsyncStorage.getItem("profile:name"),
+        AsyncStorage.getItem("profile:avatar"),
       ]);
 
       setMyUsername(username);
@@ -29,20 +29,25 @@ export const useMyAvatar = () => {
 
       if (avatarPath) {
         try {
-          const base64 = await FileSystem.readAsStringAsync(avatarPath, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          const avatarBase64 = `data:image/jpeg;base64,${base64}`;
-          setMyAvatar(avatarBase64);
+          if (avatarPath.startsWith("data:image/")) {
+            // Ya es data URI válido, usar directamente
+            setMyAvatar(avatarPath);
+          } else {
+            const base64 = await FileSystem.readAsStringAsync(avatarPath, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+            const avatarBase64 = `data:image/jpeg;base64,${base64}`;
+            setMyAvatar(avatarBase64);
+          }
         } catch (avatarError) {
-          console.error('❌ useMyAvatar - Error loading avatar:', avatarError);
+          console.error("❌ useMyAvatar - Error loading avatar:", avatarError);
           setMyAvatar(null);
         }
       } else {
         setMyAvatar(null);
       }
     } catch (error) {
-      console.error('❌ useMyAvatar - Error loading data:', error);
+      console.error("❌ useMyAvatar - Error loading data:", error);
     } finally {
       setIsLoading(false);
     }
@@ -59,6 +64,6 @@ export const useMyAvatar = () => {
     myUsername,
     myName,
     isLoading,
-    refreshMyData
+    refreshMyData,
   };
 };

@@ -5,11 +5,14 @@ import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Button } from "../src/shared/components/ui";
-import { setUsername } from "../src/shared/utils";
+import { setUsername, getUsername } from "../src/shared/utils";
+import { useSocket, useStorage } from "../src/shared/hooks";
 
 export default function Login() {
   const [username, setUsernameState] = useState("");
   const [loading, setLoading] = useState(false);
+  const { socket } = useSocket();
+  const { saveItem } = useStorage();
 
   const handleLogin = async () => {
     if (!username.trim()) {
@@ -26,13 +29,42 @@ export default function Login() {
     }
 
     setLoading(true);
-    const success = await setUsername(username.trim());
+    const uname = username.trim();
+    const success = await setUsername(uname);
 
-    if (success) {
-      router.replace("/gameSelect");
-    } else {
+    if (!success) {
       Alert.alert("Error", "No se pudo guardar el nombre de usuario");
+      setLoading(false);
+      return;
     }
+
+    // Intentar obtener perfil remoto inmediatamente (si existe en BD)
+    try {
+      if (socket && socket.connected) {
+        await new Promise((resolve) => {
+          socket.emit(
+            "getPlayerProfile",
+            { username: uname, gameKey: "bingo" },
+            async (res) => {
+              if (res?.ok && res.player) {
+                if (res.player.name)
+                  await saveItem("profile:name", res.player.name);
+                if (res.player.avatarUrl)
+                  await saveItem("profile:avatar", res.player.avatarUrl);
+              }
+              resolve();
+            }
+          );
+        });
+      } else {
+        // Si no está conectado, intentar una conexión rápida y reintentar una vez
+        socket?.connect?.();
+      }
+    } catch (e) {
+      console.log("Login: error fetching remote profile", e);
+    }
+
+    router.replace("/gameSelect");
     setLoading(false);
   };
 

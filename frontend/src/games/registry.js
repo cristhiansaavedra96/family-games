@@ -96,7 +96,7 @@ export const AVAILABLE_GAMES = {
     available: true,
     minPlayers: 2,
     maxPlayers: 8,
-    disabled: true, // Próximamente
+    // disabled: true, // habilitado
     routes: {
       rooms: "/rooms",
       game: "/games/uno/[roomId]",

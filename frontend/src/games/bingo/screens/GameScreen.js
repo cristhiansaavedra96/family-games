@@ -38,7 +38,7 @@ import {
 } from "../components";
 import { useBingoUiStore } from "../stores";
 
-const SHOW_DEBUG = true;
+const SHOW_DEBUG = false;
 // Duración máxima de gracia extendida (ms) - mantener en sync con backend si se cambia
 const EXTENDED_BACKGROUND_GRACE_MS = 5 * 60 * 1000;
 

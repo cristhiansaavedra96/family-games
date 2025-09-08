@@ -5,11 +5,14 @@ import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { getAvailableGames, getGameInfo } from "../src/games/registry";
-import { useStorage } from "../src/shared/hooks";
+import { useStorage, useSocket } from "../src/shared/hooks";
+import { getUsername } from "../src/shared/utils";
 
 export default function Games() {
-  const { loadItem } = useStorage(); // 🆕 Hook para storage
+  const { loadItem, saveItem } = useStorage(); // 🆕 Hook para storage
+  const { socket } = useSocket();
   const [userAvatar, setUserAvatar] = useState(null);
+  const [avatarLoading, setAvatarLoading] = useState(true);
 
   // Cargar avatar del usuario
   useEffect(() => {
@@ -21,9 +24,36 @@ export default function Games() {
       const savedAvatar = await loadItem("profile:avatar");
       if (savedAvatar) {
         setUserAvatar(savedAvatar);
+        setAvatarLoading(false);
+        return;
+      }
+
+      // Intentar fetch remoto si no hay local
+      const uname = await getUsername();
+      if (uname && socket && socket.connected) {
+        await new Promise((resolve) => {
+          socket.emit(
+            "getPlayerProfile",
+            { username: uname, gameKey: "bingo" },
+            async (res) => {
+              if (res?.ok && res.player) {
+                if (res.player.avatarUrl) {
+                  setUserAvatar(res.player.avatarUrl);
+                  await saveItem("profile:avatar", res.player.avatarUrl);
+                }
+                if (res.player.name) {
+                  await saveItem("profile:name", res.player.name);
+                }
+              }
+              resolve();
+            }
+          );
+        });
       }
     } catch (error) {
       console.log("Error loading avatar:", error);
+    } finally {
+      setAvatarLoading(false);
     }
   };
 
@@ -41,6 +71,8 @@ export default function Games() {
       router.push({ pathname: "/rooms", params: { gameType: "bingo" } });
     } else if (gameId === "truco") {
       router.push({ pathname: "/rooms", params: { gameType: "truco" } });
+    } else if (gameId === "uno") {
+      router.push({ pathname: "/rooms", params: { gameType: "uno" } });
     }
     // Aquí se pueden agregar más juegos en el futuro
   };
@@ -100,6 +132,8 @@ export default function Games() {
                   }}
                   resizeMode="cover"
                 />
+              ) : avatarLoading ? (
+                <Ionicons name="time" size={24} color="white" />
               ) : (
                 <Ionicons name="person" size={24} color="white" />
               )}
