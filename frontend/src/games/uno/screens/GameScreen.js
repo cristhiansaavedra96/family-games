@@ -3,13 +3,11 @@ import {
   View,
   Text,
   TouchableOpacity,
-  FlatList,
-  StyleSheet,
   Image,
   Modal,
-  PanResponder,
   Animated,
   Dimensions,
+  StyleSheet,
 } from "react-native";
 import {
   SafeAreaView,
@@ -22,11 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSocket } from "../../../shared/hooks";
 import { ChatPanel, ChatButton, ChatToasts } from "../../../shared/components";
 import { useAvatarSync, useMyAvatar } from "../../../shared/hooks";
-import {
-  getUnoCardImage,
-  getUnoBackImage,
-  getUnoDeckStackImages,
-} from "../utils/cardAssets";
+import { getUnoCardImage } from "../utils/cardAssets";
 import {
   ChallengeResultModal,
   RoundEndModal,
@@ -35,6 +29,23 @@ import {
 } from "../components";
 import UnoGameSummaryModal from "../components/GameSummaryModal";
 import { SHOW_DEBUG } from "../../../core/config/debug";
+
+// Componentes refactorizados
+import ActionBar from "../components/ActionBar";
+import PlayerSlot from "../components/PlayerSlot";
+import CenterTable from "../components/CenterTable";
+import HandArea from "../components/HandArea";
+
+// Utilidades y estilos
+import {
+  shortId,
+  getTableBackgroundColor,
+  getTableBorderColor,
+  getPlayerPositions,
+  getResponsiveScale,
+  extractUnoState,
+} from "../utils/gameHelpers";
+import { styles, createResponsiveStyles } from "./GameScreen.styles";
 
 // Estado inicial básico para UNO (public + private)
 const initialPublic = {
@@ -101,16 +112,8 @@ export default function UnoGameScreen() {
     return () => subscription?.remove?.();
   }, []);
 
-  // Calcular escala basada en altura de pantalla
-  const getResponsiveScale = () => {
-    const baseHeight = 680; // Altura de referencia (iPhone 11/12 estándar)
-    const currentHeight = screenData.height;
-    const scale = Math.min(Math.max(currentHeight / baseHeight, 0.8), 1.5);
-    return scale;
-  };
-
   // Calcular tamaños dinámicos
-  const scale = getResponsiveScale();
+  const scale = getResponsiveScale(screenData.height);
 
   // Detección mejorada para Galaxy S23 y dispositivos similares
   const actualHeight = screenData.height;
@@ -156,7 +159,7 @@ export default function UnoGameScreen() {
 
     // Espaciados responsivos - diferentes para cada tamaño de pantalla
     rowPadding: Math.round(15 * scale),
-    marginVertical: Math.round(4 * scale),
+    marginVertical: Math.round(2 * scale), // Reducido de 4 a 2
 
     // Espaciados específicos del centro
     centerHeight: isReallySmallScreen
@@ -167,33 +170,33 @@ export default function UnoGameScreen() {
     centerMarginTop: isReallySmallScreen
       ? -20 // Mucho más agresivo para Galaxy S23
       : isSmallScreen
-      ? -2
+      ? -5 // Reducido de -2 a -5
       : isLargeScreen
-      ? 8
-      : 5, // Mucho más arriba para Galaxy S23
+      ? 5 // Reducido de 8 a 5
+      : 2, // Reducido de 5 a 2
     centerMarginBottom: isReallySmallScreen
       ? 2 // Muy poco espacio abajo para Galaxy S23
       : isSmallScreen
-      ? 6
+      ? 3 // Reducido de 6 a 3
       : isLargeScreen
-      ? 15
-      : 10, // Reducido ligeramente
+      ? 10 // Reducido de 15 a 10
+      : 6, // Reducido de 10 a 6
 
     // Espaciado para la última fila - más conservador en pantallas pequeñas
     bottomRowMarginTop: isReallySmallScreen
-      ? 15 // Más espacio arriba para empujar hacia abajo en Galaxy S23
+      ? 10 // Reducido de 15 a 10
       : isSmallScreen
-      ? 5
+      ? 3 // Reducido de 5 a 3
       : isLargeScreen
-      ? 25
-      : 15, // Mucho menos en pantallas pequeñas
+      ? 15 // Reducido de 25 a 15
+      : 8, // Reducido de 15 a 8
     bottomRowMarginBottom: isReallySmallScreen
-      ? 8 // Más espacio abajo para Galaxy S23
+      ? 6 // Reducido de 8 a 6
       : isSmallScreen
-      ? 3
+      ? 2 // Reducido de 3 a 2
       : isLargeScreen
-      ? 8
-      : 5,
+      ? 6 // Reducido de 8 a 6
+      : 3, // Reducido de 5 a 3
 
     // Textos
     fontSize: {
@@ -216,7 +219,7 @@ export default function UnoGameScreen() {
   const touchStartRef = useRef({ x: 0, y: 0 });
   const movedRef = useRef(false); // Para saber si se movió fuera de deadzone
 
-  // PanResponder global eliminado - ahora cada carta maneja su propio drag
+  // Determinar si es mi turno
   const isMyTurn =
     publicState.currentPlayer === me ||
     publicState.currentPlayer === socket?.id;
@@ -231,7 +234,16 @@ export default function UnoGameScreen() {
     if (!socket) return;
 
     const onState = (s) => {
-      setPublicState((prev) => ({ ...prev, ...extractUnoState(s) }));
+      const newUnoState = extractUnoState(s);
+
+      setPublicState((prev) => {
+        // Si los nuevos players están vacíos pero teníamos datos antes, preservar los anteriores
+        if (!newUnoState.players && prev.players && prev.players.length > 0) {
+          return { ...prev, ...newUnoState, players: prev.players };
+        }
+        return { ...prev, ...newUnoState };
+      });
+
       if (s.players) {
         // Intentar deducir mi id si no lo tenemos
         if (!me && s.players.some((p) => p.id === socket.id)) {
@@ -591,33 +603,15 @@ export default function UnoGameScreen() {
     }, 1000);
   }, []);
 
-  const extractUnoState = (s) => ({
-    started: s.started,
-    gameEnded: s.gameEnded,
-    currentPlayer: s.currentPlayer,
-    direction: s.direction,
-    topCard: s.topCard,
-    currentColor: s.currentColor,
-    discardCount: s.discardCount,
-    drawCount: s.drawCount,
-    players: s.players || [],
-    pendingDrawCount: s.pendingDrawCount,
-    pendingDrawType: s.pendingDrawType,
-    winner: s.winner,
-    uno: s.uno || [],
-    wild4Challenge: s.wild4Challenge || null,
-    scores: s.scores || {},
-    eliminatedPlayers: s.eliminatedPlayers || [],
-    roundWinner: s.roundWinner || null,
-  });
-
-  // Debug: verificar el currentColor
-  console.log("🎨 Public state:", publicState);
-  console.log("🎨 Current Color:", publicState.currentColor);
-  console.log(
-    "🎨 Background Color:",
-    getTableBackgroundColor(publicState.currentColor)
-  );
+  // Debug: verificar el currentColor (solo cuando cambia el color, no cada segundo)
+  useEffect(() => {
+    console.log("🎨 Public state updated:", publicState);
+    console.log("🎨 Current Color:", publicState.currentColor);
+    console.log(
+      "🎨 Background Color:",
+      getTableBackgroundColor(publicState.currentColor)
+    );
+  }, [publicState.currentColor, publicState.started, publicState.gameEnded]); // Solo cuando cambian cosas importantes
 
   // Acciones básicas
   const handleDraw = () => {
@@ -718,228 +712,34 @@ export default function UnoGameScreen() {
     setPlayersReady((prev) => ({ ...prev, [me]: true }));
   };
 
-  // Maneja el single tap (selección) y double tap (jugar carta)
-  const handleTapCard = (card) => {
-    if (!isMyTurn) return;
-    const now = Date.now();
-    const { time: lastTime, cardId: lastId } = lastTapRef.current;
-    if (lastId === card.id && now - lastTime < DOUBLE_TAP_DELAY) {
-      // Double tap: jugar carta
-      lastTapRef.current = { time: 0, cardId: null };
-      playCard(card);
-      setSelectedCardId(null);
-      return;
-    }
-    // Single tap: seleccionar
-    lastTapRef.current = { time: now, cardId: card.id };
-    setSelectedCardId(card.id);
-  };
-
-  const renderCard = ({ item, index }) => {
-    const img = getUnoCardImage(item);
-    const selected = selectedCardId === item.id;
-
-    // Determinar si la carta es jugable (reglas espejo del backend)
-    const isPlayable = (() => {
-      // Solo interesa si es mi turno; si no, marcamos no jugable para el efecto visual pero sin interacción
-      if (!isMyTurn) return false;
-      const state = publicState;
-      if (!state || !state.topCard) return false;
-
-      // Stacking activo
-      if (state.pendingDrawCount > 0) {
-        if (state.pendingDrawType === "draw2" && item.kind === "draw2")
-          return true;
-        if (
-          state.pendingDrawType === "wild_draw4" &&
-          item.kind === "wild_draw4"
-        )
-          return true;
-        return false;
-      }
-
-      // Wilds siempre jugables
-      if (item.kind === "wild" || item.kind === "wild_draw4") return true;
-
-      // Coincidir por color (usar currentColor si existe, sino el color de topCard)
-      const activeColor = state.currentColor || state.topCard.color;
-      if (item.color && item.color === activeColor) return true;
-
-      // Coincidir por tipo/valor con la carta superior
-      const topCard = state.topCard;
-
-      // Si ambas son cartas numéricas, comparar valor
-      if (item.kind === "number" && topCard.kind === "number") {
-        return item.value === topCard.value;
-      }
-
-      // Si ambas son del mismo tipo especial (skip, reverse, draw2)
-      if (item.kind !== "number" && item.kind === topCard.kind) {
-        return true;
-      }
-
-      return false;
-    })();
-
-    // Efecto visual de selección mejorado (sin borde): levantar + glow
-    const cardScale = selected ? 1.0 : 1.0;
-    const cardMarginRight = selected ? -25 : -35; // Menos superposición cuando está seleccionada
-    // zIndex incremental evita que se solapen overlays de cartas anteriores creando "bandas"
-    const cardZIndex = selected ? 1000 : index + 1;
-    const liftTranslate = selected && !isDragging ? -2 : 0; // levantamiento más sutil
-
-    // PanResponder individual para cada carta para drag directo
-    const cardPanResponder = PanResponder.create({
-      onStartShouldSetPanResponder: () => isMyTurn && isPlayable,
-      onMoveShouldSetPanResponder: (_, g) => {
-        if (!isMyTurn || !isPlayable) return false;
-        // Si ya estamos activos arrastrando, continuar
-        if (dragActive.current) return true;
-        // Detectar si se excedió deadzone para iniciar drag
-        const moved =
-          Math.abs(g.dx) > TAP_DEADZONE || Math.abs(g.dy) > TAP_DEADZONE;
-        return moved; // Solo si se movió iniciamos pan responder para drag
-      },
-      onPanResponderGrant: (e) => {
-        if (!isMyTurn || !isPlayable) return;
-        const { pageX, pageY } = e.nativeEvent;
-        touchStartRef.current = { x: pageX, y: pageY };
-        movedRef.current = false;
-        // No activamos drag aún; esperamos a superar deadzone en move
-      },
-      onPanResponderMove: (_, g) => {
-        if (!isMyTurn || !isPlayable) return;
-        const moved =
-          Math.abs(g.dx) > TAP_DEADZONE || Math.abs(g.dy) > TAP_DEADZONE;
-        if (moved) movedRef.current = true;
-        if (moved && !dragActive.current) {
-          // Activar drag ahora
-          setSelectedCardId(item.id);
-          dragCardId.current = item.id;
-          dragActive.current = true;
-          setIsDragging(true);
-        }
-        if (dragActive.current) {
-          if (g.dy < 0) dragY.setValue(g.dy);
-          dragX.setValue(g.dx * 0.5);
-        }
-      },
-      onPanResponderRelease: (e, g) => {
-        if (!isMyTurn || !isPlayable) return;
-        const wasDragging = dragActive.current;
-        dragActive.current = false;
-        dragCardId.current = null;
-        setIsDragging(false);
-
-        if (wasDragging) {
-          // Caso drag
-          if (g.dy < -DRAG_THRESHOLD) {
-            playCard(item);
-            setSelectedCardId(null);
-          } else {
-            // Volver a posición original; mantener selección un instante
-            setTimeout(() => {
-              setSelectedCardId(null);
-            }, 120);
-          }
-          Animated.parallel([
-            Animated.spring(dragY, { toValue: 0, useNativeDriver: true }),
-            Animated.spring(dragX, { toValue: 0, useNativeDriver: true }),
-          ]).start();
-          return;
-        }
-
-        // Si no hubo drag (deadzone), esto es un tap
-        handleTapCard(item);
-      },
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderTerminate: () => {
-        dragActive.current = false;
-        dragCardId.current = null;
-        setIsDragging(false);
-        Animated.parallel([
-          Animated.spring(dragY, { toValue: 0, useNativeDriver: true }),
-          Animated.spring(dragX, { toValue: 0, useNativeDriver: true }),
-        ]).start();
-      },
-    });
-
-    return (
-      <Animated.View
-        {...cardPanResponder.panHandlers}
-        style={[
-          styles.cardWrapper,
-          {
-            marginRight: cardMarginRight,
-            zIndex: cardZIndex,
-            elevation: selected ? 50 : 0,
-            // Solo bajar opacidad temporal al arrastrar la carta seleccionada
-            opacity: isDragging && selected ? 0.3 : 1.0,
-            transform: [{ scale: cardScale }, { translateY: liftTranslate }],
-          },
-        ]}
-      >
-        {selected && !isDragging && (
-          <View style={styles.cardGlowContainer} pointerEvents="none">
-            <View style={styles.cardGlow} />
-          </View>
-        )}
-        <Image source={img} style={styles.cardImage} resizeMode="contain" />
-      </Animated.View>
-    );
-  };
-
   const otherPlayers = publicState.players.filter((p) => p.id !== me);
   const unoPlayers = publicState.uno || [];
 
-  // Función para obtener las posiciones según el número total de jugadores
-  const getPlayerPositions = (totalPlayers) => {
-    // Posiciones disponibles en la matriz 5x3:
-    // 1x1, 1x2, 1x3 (fila superior)
-    // 2x1, 2x3 (fila media, sin centro)
-    // 5x1, 5x2, 5x3 (fila inferior, yo siempre en 5x2)
-
-    const availablePositions = [
-      { row: 1, col: 1, key: "1x1" },
-      { row: 1, col: 2, key: "1x2" },
-      { row: 1, col: 3, key: "1x3" },
-      { row: 2, col: 1, key: "2x1" },
-      { row: 2, col: 3, key: "2x3" },
-      { row: 5, col: 1, key: "5x1" },
-      { row: 5, col: 3, key: "5x3" },
-    ];
-
-    switch (totalPlayers) {
-      case 2: // 1 vs 1: rival en 1x2
-        return ["1x2"];
-      case 3: // yo + 2 rivales: 1x1, 1x3
-        return ["1x1", "1x3"];
-      case 4: // yo + 3 rivales: 1x2, 2x1, 2x3
-        return ["1x2", "2x1", "2x3"];
-      case 5: // yo + 4 rivales: 1x1, 1x3, 5x1, 5x3
-        return ["1x1", "1x3", "5x1", "5x3"];
-      case 6: // yo + 5 rivales: 1x1, 1x2, 1x3, 5x1, 5x3
-        return ["1x1", "1x2", "1x3", "5x1", "5x3"];
-      case 7: // yo + 6 rivales: 1x1, 1x3, 2x1, 2x3, 5x1, 5x3
-        return ["1x1", "1x3", "2x1", "2x3", "5x1", "5x3"];
-      case 8: // yo + 7 rivales: todas las posiciones
-        return ["1x1", "1x2", "1x3", "2x1", "2x3", "5x1", "5x3"];
-      default:
-        return [];
-    }
-  };
-
-  // Crear placeholders para todas las posiciones posibles (máximo 8 jugadores)
-  const allPositions = ["1x1", "1x2", "1x3", "2x1", "2x3", "5x1", "5x2", "5x3"];
-  const usedPositions = getPlayerPositions(publicState.players.length);
+  // Posiciones según el número total de jugadores
+  const usedPositions = getPlayerPositions(
+    publicState.players.length,
+    SHOW_DEBUG
+  );
 
   // Asignar jugadores a posiciones
   const positionedPlayers = {};
-  otherPlayers.forEach((player, index) => {
-    if (usedPositions[index]) {
-      positionedPlayers[usedPositions[index]] = player;
+
+  if (SHOW_DEBUG && publicState.players.length === 2) {
+    // En modo debug con 1 vs 1, llenar todas las posiciones con el adversario
+    const opponent = otherPlayers[0]; // El único oponente
+    if (opponent) {
+      usedPositions.forEach((position) => {
+        positionedPlayers[position] = opponent;
+      });
     }
-  });
+  } else {
+    // Comportamiento normal
+    otherPlayers.forEach((player, index) => {
+      if (usedPositions[index]) {
+        positionedPlayers[usedPositions[index]] = player;
+      }
+    });
+  }
 
   const shrinkOpponents = otherPlayers.length > 6;
 
@@ -947,6 +747,15 @@ export default function UnoGameScreen() {
   const myPlayerMeta = publicState.players.find((p) => p.id === me);
   const myDisplayName =
     myPlayerMeta?.name || myPlayerMeta?.username || myUsername || "?";
+
+  // Debug para mi jugador
+  console.log("GameScreen - Mi jugador debug:", {
+    me,
+    myUsername,
+    myDisplayName,
+    myAvatar,
+    myPlayerMeta,
+  });
 
   // Crear estilos responsivos dinámicos
   const responsiveStyles = createResponsiveStyles(responsiveSize);
@@ -965,6 +774,7 @@ export default function UnoGameScreen() {
     playersWithOneCard,
     onClaimUno: handleClaimUno,
     me,
+    currentPlayer: publicState.currentPlayer, // Agregar información del turno actual
   });
 
   return (
@@ -988,6 +798,7 @@ export default function UnoGameScreen() {
           {
             paddingTop: isReallySmallScreen ? 1 : 4, // Casi sin padding arriba para Galaxy S23
             paddingBottom: isReallySmallScreen ? 2 : 12, // Menos padding abajo para Galaxy S23
+            marginHorizontal: 2, // Margen horizontal mínimo de 2px
           },
         ]}
       >
@@ -1022,109 +833,24 @@ export default function UnoGameScreen() {
           </View>
 
           {/* Centro de la mesa - centrado horizontalmente, filas 3-4 */}
-          <View style={responsiveStyles.responsiveCenterRowContainer}>
-            <View style={styles.centerWrapper}>
-              <View style={styles.turnHeaderContainer}>
-                <Text style={styles.turnHeaderText} numberOfLines={1}>
-                  {publicState.gameEnded
-                    ? publicState.winner === me
-                      ? "Ganaste"
-                      : "Ganó otro jugador"
-                    : isMyTurn
-                    ? "Tu turno"
-                    : publicState.currentPlayer
-                    ? (() => {
-                        const cp = publicState.players.find(
-                          (p) => p.id === publicState.currentPlayer
-                        );
-                        const name =
-                          cp?.name ||
-                          cp?.username ||
-                          shortId(publicState.currentPlayer);
-                        return `Turno de ${name}`;
-                      })()
-                    : "Esperando"}
-                </Text>
-                {publicState.pendingDrawCount > 0 && (
-                  <Text
-                    style={styles.turnHeaderStack}
-                  >{`+${publicState.pendingDrawCount}`}</Text>
-                )}
-              </View>
-
-              <View
-                style={[
-                  responsiveStyles.responsiveCenterCircle,
-                  {
-                    backgroundColor: getTableBackgroundColor(
-                      publicState.currentColor
-                    ),
-                    borderColor: getTableBorderColor(publicState.currentColor),
-                  },
-                ]}
-              >
-                <View style={styles.gameElementsContainer}>
-                  <View style={styles.deckDiscardRow}>
-                    <View style={styles.deckZone}>
-                      <View style={responsiveStyles.responsiveDeckStackWrapper}>
-                        {getUnoDeckStackImages(3).map((img, i) => (
-                          <Image
-                            key={i}
-                            source={img}
-                            style={[
-                              responsiveStyles.responsiveDeckImage,
-                              {
-                                position: "absolute",
-                                top: i * 1.0,
-                                left: i * 1.0,
-                              },
-                            ]}
-                          />
-                        ))}
-                        <Image
-                          source={getUnoBackImage()}
-                          style={[
-                            responsiveStyles.responsiveDeckImage,
-                            { opacity: 0 },
-                          ]}
-                        />
-                      </View>
-                      <Text style={styles.deckCountText}>
-                        {publicState.drawCount}
-                      </Text>
-                    </View>
-
-                    <View style={styles.discardZone}>
-                      {publicState.topCard ? (
-                        <Image
-                          source={getUnoCardImage(publicState.topCard)}
-                          style={responsiveStyles.responsiveDiscardImage}
-                          resizeMode="contain"
-                        />
-                      ) : (
-                        <View
-                          style={responsiveStyles.responsivePlaceholderCard}
-                        />
-                      )}
-                    </View>
-
-                    <View style={styles.spacer} />
-                  </View>
-                </View>
-              </View>
-            </View>
-          </View>
+          <CenterTable
+            publicState={publicState}
+            responsiveStyles={responsiveStyles}
+            responsiveSize={responsiveSize}
+            styles={styles}
+            me={me}
+          />
 
           {/* Espaciador flexible para empujar la última fila hacia abajo */}
           <View
             style={{
               height: isReallySmallScreen
-                ? 70 // Más espaciado para empujar la fila hacia abajo en Galaxy S23
+                ? 50 // Reducido de 70 a 50
                 : scale < 1.0
-                ? 10
+                ? 5 // Reducido de 10 a 5
                 : scale > 1.2
-                ? 40
-                : 25,
+                ? 25 // Reducido de 40 a 25
+                : 15, // Reducido de 25 a 15
             }}
           />
 
@@ -1134,74 +860,15 @@ export default function UnoGameScreen() {
               {...getPlayerSlotProps("5x1", positionedPlayers["5x1"])}
             />
 
-            {/* Mi posición (5x2) - avatar y nombre arriba de mis cartas */}
-            <View
-              style={[
-                responsiveStyles.responsivePlayerSlot,
-                { justifyContent: "center", alignItems: "center" },
-              ]}
-            >
-              {myDisplayName &&
-                (myAvatar ? (
-                  <Image
-                    source={{ uri: myAvatar }}
-                    style={[
-                      responsiveStyles.responsiveOpponentAvatar,
-                      { borderColor: "#2ecc71" }, // Color verde para diferenciar que soy yo
-                    ]}
-                  />
-                ) : (
-                  <View
-                    style={[
-                      responsiveStyles.responsiveOpponentAvatarPlaceholder,
-                      { borderColor: "#2ecc71", backgroundColor: "#2ecc71" },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.placeholderText,
-                        {
-                          fontSize: responsiveSize.fontSize.medium,
-                          color: "#fff",
-                          fontWeight: "bold",
-                        },
-                      ]}
-                    >
-                      {(myDisplayName || "?")[0].toUpperCase()}
-                    </Text>
-                  </View>
-                ))}
-              {myDisplayName && (
-                <Text
-                  style={[
-                    styles.placeholderSubtext,
-                    {
-                      fontSize: responsiveSize.fontSize.small,
-                      fontWeight: "bold",
-                      color: "#2ecc71",
-                    },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {myDisplayName}
-                </Text>
-              )}
-              {/* Mostrar mis puntos */}
-              {publicState.scores && publicState.scores[me] !== undefined && (
-                <Text
-                  style={[
-                    styles.placeholderSubtext,
-                    {
-                      fontSize: responsiveSize.fontSize.small,
-                      color: "#f39c12",
-                      fontWeight: "bold",
-                    },
-                  ]}
-                >
-                  {publicState.scores[me]}pts
-                </Text>
-              )}
-            </View>
+            {/* Mi posición (5x2) - idéntico a los demás jugadores */}
+            <PlayerSlot
+              {...getPlayerSlotProps("5x2", {
+                id: me,
+                name: myDisplayName,
+                username: myUsername, // Usar el username real para el avatar
+                handCount: hand.length,
+              })}
+            />
 
             <PlayerSlot
               {...getPlayerSlotProps("5x3", positionedPlayers["5x3"])}
@@ -1230,56 +897,25 @@ export default function UnoGameScreen() {
         />
       )}
 
-      <View style={styles.handArea}>
-        {/* Avatar movido a la posición 5x2 arriba - aquí solo van las cartas para ocupar todo el horizontal */}
-        <View style={styles.handContainer}>
-          <FlatList
-            data={hand}
-            horizontal
-            keyExtractor={(c) => c.id}
-            renderItem={({ item, index }) => renderCard({ item, index })}
-            contentContainerStyle={styles.handListContentFull}
-            showsHorizontalScrollIndicator={false}
-            style={styles.handListContainer}
-            extraData={`${hand.length}-${selectedCardId}-${isDragging}`} // Forzar re-render cuando cambien estos estados
-            removeClippedSubviews={false} // Evitar que se clipeen las cartas
-            initialNumToRender={10} // Renderizar más cartas inicialmente
-            maxToRenderPerBatch={5} // Renderizar en lotes más pequeños
-            updateCellsBatchingPeriod={50} // Actualizar más frecuentemente
-            windowSize={10} // Mantener más items en memoria
-          />
-        </View>
-        {hand.length === 0 && publicState.started && (
-          <View style={styles.emptyHandOverlay}>
-            <Text style={styles.emptyHandText}>Sin cartas recibidas</Text>
-            <Text style={styles.emptyHandSubtext}>
-              Jugador: {me || "No definido"} | Juego iniciado:{" "}
-              {publicState.started ? "Sí" : "No"}
-            </Text>
-            <TouchableOpacity
-              style={styles.reloadBtn}
-              onPress={() => {
-                console.log("[UNO][Frontend] Manual request for private hand");
-                socket.emit("requestPrivateHand", { roomId });
-              }}
-            >
-              <Text style={styles.reloadBtnText}>Recargar mano</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.reloadBtn,
-                { backgroundColor: "#555", marginTop: 8 },
-              ]}
-              onPress={() => {
-                console.log("[UNO][Frontend] Manual request for state");
-                socket.emit("getState", { roomId });
-              }}
-            >
-              <Text style={styles.reloadBtnText}>Recargar estado</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
+      {/* Hand Area Component */}
+      <HandArea
+        hand={hand}
+        isMyTurn={isMyTurn}
+        selectedCardId={selectedCardId}
+        isDragging={isDragging}
+        styles={styles}
+        dragY={dragY}
+        dragX={dragX}
+        dragCardId={dragCardId}
+        dragActive={dragActive}
+        onPlayCard={playCard}
+        setSelectedCardId={setSelectedCardId}
+        setIsDragging={setIsDragging}
+        socket={socket}
+        roomId={roomId}
+        me={me}
+        publicState={publicState}
+      />
 
       <Modal visible={!!wildColorModal} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
@@ -1318,37 +954,6 @@ export default function UnoGameScreen() {
           </View>
         </View>
       </Modal>
-
-      {/* Overlay de drag global para mostrar la carta fuera del contenedor */}
-      {isDragging && selectedCardId && (
-        <Animated.View
-          style={[
-            styles.dragOverlayCard,
-            {
-              transform: [
-                { translateY: dragY },
-                { translateX: dragX },
-                { scale: 1.0 },
-              ],
-            },
-          ]}
-          pointerEvents="none"
-        >
-          {(() => {
-            const card = hand.find((c) => c.id === selectedCardId);
-            if (!card) return null;
-            return (
-              <Image
-                source={getUnoCardImage(card)}
-                style={styles.dragImageSmall}
-                resizeMode="contain"
-              />
-            );
-          })()}
-        </Animated.View>
-      )}
-
-      {/* Overlay de drag eliminado - ahora las cartas se arrastran desde su posición original */}
 
       {/* Chat Toasts */}
       <ChatToasts
@@ -1500,1074 +1105,5 @@ export default function UnoGameScreen() {
         </View>
       )}
     </SafeAreaView>
-  );
-}
-
-function PlayerSlot({
-  position,
-  player,
-  unoPlayers,
-  shrink,
-  responsiveStyles,
-  responsiveSize,
-  scores,
-  eliminatedPlayers,
-  getAvatarUrl,
-  playersWithOneCard,
-  onClaimUno,
-  me,
-}) {
-  if (player) {
-    // Si hay un jugador asignado, mostrar el componente Opponent normal
-    return (
-      <Opponent
-        player={player}
-        unoPlayers={unoPlayers}
-        shrink={shrink}
-        responsiveStyles={responsiveStyles}
-        responsiveSize={responsiveSize}
-        scores={scores}
-        eliminatedPlayers={eliminatedPlayers}
-        getAvatarUrl={getAvatarUrl}
-        playersWithOneCard={playersWithOneCard}
-        onClaimUno={onClaimUno}
-        me={me}
-      />
-    );
-  }
-
-  // Si no hay jugador, mostrar placeholder (visible solo si SHOW_DEBUG está habilitado)
-  return (
-    <View
-      style={[
-        responsiveStyles.responsivePlayerSlot,
-        shrink && { transform: [{ scale: 0.8 }] },
-        !SHOW_DEBUG && { opacity: 0 }, // Invisible pero mantiene el espacio
-      ]}
-    >
-      <View style={responsiveStyles.responsivePlaceholderCircle}>
-        <Text
-          style={[
-            styles.placeholderIcon,
-            { fontSize: responsiveSize.fontSize.medium },
-          ]}
-        >
-          👤
-        </Text>
-      </View>
-      <Text
-        style={[
-          styles.placeholderText,
-          { fontSize: responsiveSize.fontSize.small },
-        ]}
-      >
-        {position}
-      </Text>
-    </View>
-  );
-}
-
-function shortId(id) {
-  return id ? id.slice(0, 4) : "";
-}
-
-// Función para obtener el color de fondo de la mesa basado en currentColor
-const getTableBackgroundColor = (currentColor) => {
-  const colorMap = {
-    red: "#4a1c1c", // Rojo oscuro
-    blue: "#1c2c4a", // Azul oscuro
-    green: "#1c4a2c", // Verde oscuro
-    yellow: "#4a4a1c", // Amarillo oscuro
-    wild: "#3c2a4a", // Púrpura oscuro para wild
-  };
-  return colorMap[currentColor?.toLowerCase()] || "#0d3b24"; // Verde por defecto
-};
-
-const getTableBorderColor = (currentColor) => {
-  const colorMap = {
-    red: "#6b2d2d", // Rojo borde
-    blue: "#2d3a6b", // Azul borde
-    green: "#2d6b3a", // Verde borde
-    yellow: "#6b6b2d", // Amarillo borde
-    wild: "#54396b", // Púrpura borde para wild
-  };
-  return colorMap[currentColor?.toLowerCase()] || "#145c36"; // Verde por defecto
-};
-
-// Función para crear estilos responsivos
-const createResponsiveStyles = (responsiveSize) =>
-  StyleSheet.create({
-    // Estilos dinámicos que cambian con el tamaño de pantalla
-    responsivePlayerSlot: {
-      alignItems: "center",
-      width: responsiveSize.playerSlot,
-      height: responsiveSize.playerSlot,
-    },
-    responsivePlaceholderCircle: {
-      width: responsiveSize.placeholderCircle,
-      height: responsiveSize.placeholderCircle,
-      borderRadius: responsiveSize.placeholderCircle / 2,
-      backgroundColor: "#2c3e50",
-      borderWidth: 2,
-      borderColor: "#34495e",
-      borderStyle: "dashed",
-      alignItems: "center",
-      justifyContent: "center",
-      marginBottom: 3,
-    },
-    responsiveCenterCircle: {
-      width: responsiveSize.centerCircle,
-      height: responsiveSize.centerCircle,
-      borderRadius: responsiveSize.centerCircle / 2,
-      backgroundColor: "#0d3b24",
-      borderWidth: 2,
-      borderColor: "#145c36",
-      alignItems: "center",
-      justifyContent: "center",
-      shadowColor: "#000",
-      shadowOpacity: 0.45,
-      shadowRadius: 14,
-      shadowOffset: { width: 0, height: 4 },
-      elevation: 9,
-    },
-    responsiveDiscardImage: {
-      width: responsiveSize.discardCard.width,
-      height: responsiveSize.discardCard.height,
-    },
-    responsivePlaceholderCard: {
-      width: responsiveSize.discardCard.width,
-      height: responsiveSize.discardCard.height,
-      backgroundColor: "#333",
-      borderRadius: 13,
-    },
-    responsiveDeckStackWrapper: {
-      width: responsiveSize.deckCard.width,
-      height: responsiveSize.deckCard.height,
-      position: "relative",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    responsiveDeckImage: {
-      width: responsiveSize.deckCard.width,
-      height: responsiveSize.deckCard.height,
-      borderRadius: 5,
-    },
-    responsiveMatrixRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      paddingHorizontal: responsiveSize.rowPadding,
-      marginVertical: responsiveSize.marginVertical,
-    },
-    responsiveCenterRowContainer: {
-      justifyContent: "flex-start",
-      alignItems: "center",
-      marginTop: responsiveSize.centerMarginTop,
-      marginBottom: responsiveSize.centerMarginBottom,
-      height: responsiveSize.centerHeight,
-    },
-    responsiveBottomRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      paddingHorizontal: responsiveSize.rowPadding,
-      marginTop: responsiveSize.bottomRowMarginTop,
-      marginBottom: responsiveSize.bottomRowMarginBottom,
-    },
-    responsiveGameMatrix: {
-      flex: 1,
-      justifyContent: "flex-start",
-      paddingVertical: 5,
-      minHeight: Math.round(350 * (responsiveSize.centerCircle / 160)), // Altura mínima proporcional
-    },
-    responsiveOpponentAvatar: {
-      width: responsiveSize.avatarSize,
-      height: responsiveSize.avatarSize,
-      borderRadius: responsiveSize.avatarSize / 2,
-      borderWidth: 2,
-      borderColor: "#3498db",
-      marginBottom: 3,
-    },
-    responsiveOpponentAvatarPlaceholder: {
-      width: responsiveSize.avatarSize,
-      height: responsiveSize.avatarSize,
-      borderRadius: responsiveSize.avatarSize / 2,
-      backgroundColor: "#333",
-      alignItems: "center",
-      justifyContent: "center",
-      marginBottom: 3,
-      borderWidth: 2,
-      borderColor: "#444",
-    },
-  });
-
-const styles = StyleSheet.create({
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingTop: 6,
-  },
-  backBtn: { padding: 8 },
-  title: { color: "#fff", fontSize: 22, fontWeight: "700" },
-  tableArea: {
-    flex: 1,
-    paddingHorizontal: 8,
-    paddingTop: 4,
-    justifyContent: "flex-start", // Cambiado de "center" a "flex-start"
-    paddingBottom: 12, // Aumentado de 8 a 12 para más espacio
-  },
-  gameMatrix: {
-    flex: 1,
-    justifyContent: "flex-start", // Volver a flex-start para mejor control
-    paddingVertical: 5,
-  },
-  matrixRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 15, // Reducido de 20 a 15
-    marginVertical: 4, // Reducido de 8 a 4
-  },
-  matrixRowSecond: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 15, // Reducido de 20 a 15
-    marginTop: 8, // Reducido de 15 a 8 - más cerca de la primera fila
-    marginBottom: 4, // Reducido de 8 a 4
-  },
-  centerRowContainer: {
-    justifyContent: "flex-start", // Cambiado de "center" a "flex-start"
-    alignItems: "center",
-    marginTop: 5, // Reducido significativamente de 15 a 5
-    marginBottom: 10, // Reducido de 15 a 10
-    height: 120, // Altura fija más pequeña para que ocupe menos espacio
-  },
-  spacerForCenter: {
-    width: 60, // Reducido de 80 a 60
-  },
-  playerSlotPlaceholder: {
-    alignItems: "center",
-    width: 60, // Reducido de 80 a 60
-    height: 60, // Reducido de 80 a 60
-  },
-  placeholderCircle: {
-    width: 38, // Reducido de 50 a 38
-    height: 38, // Reducido de 50 a 38
-    borderRadius: 19, // Ajustado al nuevo tamaño
-    backgroundColor: "#2c3e50",
-    borderWidth: 2,
-    borderColor: "#34495e",
-    borderStyle: "dashed",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 3, // Reducido de 4 a 3
-  },
-  placeholderIcon: {
-    fontSize: 16, // Reducido de 20 a 16
-    opacity: 0.6,
-  },
-  placeholderText: {
-    color: "#7f8c8d",
-    fontSize: 9, // Reducido de 10 a 9
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  placeholderSubtext: {
-    color: "#7f8c8d",
-    fontSize: 7, // Reducido de 8 a 7
-    opacity: 0.7,
-    textAlign: "center",
-  },
-  mySlotPlaceholder: {
-    alignItems: "center",
-    width: 60, // Reducido de 80 a 60
-    height: 60, // Reducido de 80 a 60
-    justifyContent: "center",
-  },
-  centerZoneCircle: {
-    width: 160, // Reducido de 200 a 160
-    height: 160, // Reducido de 200 a 160
-    borderRadius: 80, // Ajustado al nuevo tamaño
-    backgroundColor: "#0d3b24",
-    borderWidth: 2,
-    borderColor: "#145c36",
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.45,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 9,
-  },
-  gameElementsContainer: {
-    flex: 1,
-    width: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  deckDiscardRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 12, // Reducido de 15 a 12
-    width: "100%",
-  },
-  deckZone: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  deckStackWrapper: {
-    width: 28, // Reducido de 32 a 28
-    height: 44, // Reducido de 50 a 44
-    position: "relative",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  deckImage: {
-    width: 28, // Reducido de 32 a 28
-    height: 44, // Reducido de 50 a 44
-    borderRadius: 5,
-  },
-  deckCountText: {
-    color: "#f1c40f",
-    fontWeight: "700",
-    fontSize: 10,
-    marginTop: 3,
-    textAlign: "center",
-    textShadowColor: "#000",
-    textShadowRadius: 2,
-    textShadowOffset: { width: 0, height: 1 },
-  },
-  discardZone: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  discardImage: {
-    width: 70, // Reducido de 85 a 70
-    height: 110, // Reducido de 135 a 110
-  },
-  placeholderCard: {
-    width: 70, // Reducido de 85 a 70
-    height: 110, // Reducido de 135 a 110
-    backgroundColor: "#333",
-    borderRadius: 13,
-  },
-  spacer: {
-    width: 5, // Mismo ancho que el deckZone para equilibrar
-  },
-  turnHeaderContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 8,
-    marginBottom: 6, // Reducido de 10 a 6
-  },
-  turnHeaderCircle: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 8,
-  },
-  turnHeaderText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "700",
-    maxWidth: 200,
-    textAlign: "center",
-  },
-  turnHeaderStack: {
-    color: "#f39c12",
-    fontSize: 15,
-    fontWeight: "700",
-    marginLeft: 8,
-  },
-  centerWrapper: {
-    alignItems: "center",
-    justifyContent: "center",
-    width: 200, // Reducido de 250 a 200
-  },
-  middleRow: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    justifyContent: "space-between",
-  },
-  opponentBox: {
-    alignItems: "center",
-    minWidth: 55, // Reducido de 70 a 55
-    maxWidth: 65, // Reducido de 80 a 65
-  },
-  opponentId: {
-    color: "#fff",
-    fontSize: 11, // Reducido para ser más compacto
-    opacity: 0.8,
-  },
-  opponentHandRow: {
-    flexDirection: "row",
-    marginTop: 2,
-  },
-  backSmallWrapper: {
-    width: 22, // Reducido de 26 a 22
-    height: 34, // Reducido de 40 a 34
-    marginRight: -14, // Ajustado para el nuevo tamaño
-  },
-  backSmall: {
-    width: 22, // Reducido de 26 a 22
-    height: 34, // Reducido de 40 a 34
-  },
-  opponentCount: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 12, // Reducido de 14 a 12
-    marginTop: 2, // Reducido de 4 a 2
-  },
-  opponentScore: {
-    color: "#f39c12",
-    fontWeight: "600",
-    fontSize: 10,
-    marginTop: 1,
-  },
-  unoBadge: {
-    color: "#e74c3c",
-    fontWeight: "800",
-    fontSize: 10, // Reducido de 12 a 10
-    marginTop: 1, // Reducido de 2 a 1
-  },
-  handArea: {
-    height: 140,
-    backgroundColor: "#181818",
-    borderTopWidth: 1,
-    borderTopColor: "#222",
-    borderBottomWidth: 1,
-    borderBottomColor: "#222",
-    justifyContent: "center",
-    overflow: "visible",
-  },
-  handListContentFull: {
-    alignItems: "center",
-    paddingHorizontal: 50,
-    minWidth: "100%",
-  },
-  handListContainer: {
-    flexGrow: 0,
-  },
-  handContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-    paddingHorizontal: 10,
-    overflow: "visible",
-  },
-  cardWrapper: {
-    width: 72,
-    height: 112,
-    marginRight: -35,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 12,
-    overflow: "hidden", // Evita que bordes superpuestos generen líneas claras
-    position: "relative", // Necesario para que zIndex funcione de forma consistente (Android)
-  },
-  cardImage: {
-    width: 72,
-    height: 112,
-  },
-  cardGlowContainer: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cardGlow: {
-    position: "absolute",
-    width: 72,
-    height: 112,
-    borderRadius: 12,
-    backgroundColor: "#f5c54233", // suave amarillo translúcido
-    shadowColor: "#f1c40f",
-    shadowOpacity: 0.9,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 8,
-  },
-  cardDisabledOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    // Overlay simple sin bordes redondeados para evitar artefactos blancos
-    backgroundColor: "rgba(0,0,0,0.35)",
-    // Remover borderRadius para evitar rayas blancas por desalineación
-    zIndex: 20,
-    elevation: 20,
-  },
-  actionBarContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between", // Cambiado de space-around a space-between
-    alignItems: "center",
-    height: 56, // Altura fija para evitar layout shifts
-    paddingHorizontal: 12,
-    backgroundColor: "#111",
-    borderTopWidth: 1,
-    borderTopColor: "#222",
-    borderBottomWidth: 1,
-    borderBottomColor: "#222",
-  },
-  actionBtn: {
-    backgroundColor: "#34495e",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  actionText: { color: "#fff", fontWeight: "600" },
-  disabledBtn: { opacity: 0.35 },
-  dangerBtn: { backgroundColor: "#c0392b" },
-  successBtn: { backgroundColor: "#16a085" },
-  warnBtn: { backgroundColor: "#f39c12" },
-  emptyHandOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.4)",
-  },
-  emptyHandText: { color: "#fff", marginBottom: 8 },
-  emptyHandSubtext: {
-    color: "#bbb",
-    fontSize: 12,
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  reloadBtn: {
-    backgroundColor: "#444",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 6,
-  },
-  reloadBtnText: { color: "#fff", fontWeight: "600" },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  colorWheelWrapper: {
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: "rgba(30,30,30,0.9)",
-    position: "relative",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "#444",
-  },
-  colorDot: {
-    position: "absolute",
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    shadowColor: "#000",
-    shadowOpacity: 0.6,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 6,
-    borderWidth: 3,
-    borderColor: "#111",
-  },
-  closeColorPicker: {
-    position: "absolute",
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: "#222",
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.5,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  dragOverlayCard: {
-    position: "absolute",
-    bottom: 150,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    zIndex: 999,
-    elevation: 999,
-    pointerEvents: "none",
-  },
-  dragImageSmall: { width: 100, height: 156 },
-  meOverlayAvatarCentered: {
-    position: "absolute",
-    top: 2,
-    left: "50%",
-    transform: [{ translateX: -27 }],
-    width: 54,
-    alignItems: "center",
-    zIndex: 10,
-  },
-  meAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    borderWidth: 2,
-    borderColor: "#2ecc71",
-  },
-  meAvatarPlaceholder: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: "#444",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "#555",
-  },
-  meAvatarLetter: { color: "#fff", fontWeight: "700", fontSize: 20 },
-  meAvatarNameSmall: {
-    color: "#fff",
-    fontSize: 10,
-    marginTop: 2,
-    maxWidth: 54,
-    textAlign: "center",
-  },
-  opponentAvatar: {
-    width: 34, // Reducido de 40 a 34
-    height: 34, // Reducido de 40 a 34
-    borderRadius: 17, // Ajustado al nuevo tamaño
-    borderWidth: 2,
-    borderColor: "#3498db",
-    marginBottom: 3, // Reducido de 4 a 3
-  },
-  opponentAvatarPlaceholder: {
-    width: 34, // Reducido de 40 a 34
-    height: 34, // Reducido de 40 a 34
-    borderRadius: 17, // Ajustado al nuevo tamaño
-    backgroundColor: "#333",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 3, // Reducido de 4 a 3
-    borderWidth: 2,
-    borderColor: "#444",
-  },
-  opponentAvatarLetter: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 14, // Reducido de 16 (por defecto) a 14
-  },
-});
-
-function Opponent({
-  player,
-  unoPlayers,
-  shrink,
-  responsiveStyles,
-  responsiveSize,
-  scores,
-  eliminatedPlayers,
-  getAvatarUrl,
-  playersWithOneCard,
-  onClaimUno,
-  me,
-}) {
-  const unoFlag = unoPlayers.find((u) => u.playerId === player.id);
-  const back = getUnoBackImage();
-  const stacks = Math.min(player.handCount, 6);
-  const arr = Array.from({ length: stacks });
-  const displayName = player.name || player.username || "?";
-  const avatarUrl = getAvatarUrl(player.username);
-  const playerScore = scores[player.id] || 0;
-  const isEliminated = eliminatedPlayers.includes(player.id);
-
-  // Usar tamaños responsivos si están disponibles, si no, usar estilos fijos
-  const avatarStyle = responsiveStyles
-    ? responsiveStyles.responsiveOpponentAvatar
-    : styles.opponentAvatar;
-  const avatarPlaceholderStyle = responsiveStyles
-    ? responsiveStyles.responsiveOpponentAvatarPlaceholder
-    : styles.opponentAvatarPlaceholder;
-
-  return (
-    <View
-      style={[
-        styles.opponentBox,
-        shrink && { transform: [{ scale: 0.9 }] },
-        isEliminated && { opacity: 0.5 },
-      ]}
-    >
-      {avatarUrl ? (
-        <Image
-          source={{ uri: avatarUrl }}
-          style={[
-            avatarStyle,
-            shrink &&
-              responsiveSize && {
-                width: responsiveSize.avatarSize * 0.85,
-                height: responsiveSize.avatarSize * 0.85,
-                borderRadius: (responsiveSize.avatarSize * 0.85) / 2,
-              },
-            isEliminated && { borderColor: "#e74c3c" },
-          ]}
-        />
-      ) : (
-        <View
-          style={[
-            avatarPlaceholderStyle,
-            shrink &&
-              responsiveSize && {
-                width: responsiveSize.avatarSize * 0.85,
-                height: responsiveSize.avatarSize * 0.85,
-                borderRadius: (responsiveSize.avatarSize * 0.85) / 2,
-              },
-            isEliminated && { borderColor: "#e74c3c" },
-          ]}
-        >
-          <Text
-            style={[
-              styles.opponentAvatarLetter,
-              {
-                fontSize: responsiveSize ? responsiveSize.fontSize.medium : 14,
-              },
-              shrink && {
-                fontSize: responsiveSize ? responsiveSize.fontSize.small : 12,
-              },
-            ]}
-          >
-            {displayName[0].toUpperCase()}
-          </Text>
-        </View>
-      )}
-      <View style={[styles.opponentHandRow, { justifyContent: "center" }]}>
-        {arr.map((_, i) => (
-          <View
-            key={i}
-            style={[
-              styles.backSmallWrapper,
-              responsiveSize && {
-                width: responsiveSize.opponentCard.width,
-                height: responsiveSize.opponentCard.height,
-                marginRight: -(responsiveSize.opponentCard.width * 0.6),
-              },
-              shrink &&
-                responsiveSize && {
-                  width: responsiveSize.opponentCard.width * 0.8,
-                  height: responsiveSize.opponentCard.height * 0.8,
-                  marginRight: -(responsiveSize.opponentCard.width * 0.8 * 0.6),
-                },
-            ]}
-          >
-            <Image
-              source={back}
-              style={[
-                styles.backSmall,
-                responsiveSize && {
-                  width: responsiveSize.opponentCard.width,
-                  height: responsiveSize.opponentCard.height,
-                },
-                shrink &&
-                  responsiveSize && {
-                    width: responsiveSize.opponentCard.width * 0.8,
-                    height: responsiveSize.opponentCard.height * 0.8,
-                  },
-              ]}
-            />
-          </View>
-        ))}
-      </View>
-      <Text
-        style={[
-          styles.opponentId,
-          {
-            marginTop: 2,
-            fontSize: responsiveSize ? responsiveSize.fontSize.small : 11,
-          },
-          isEliminated && {
-            color: "#e74c3c",
-            textDecorationLine: "line-through",
-          },
-        ]}
-        numberOfLines={1}
-      >
-        {displayName} {isEliminated && "(ELIM)"}
-      </Text>
-      <Text
-        style={[
-          styles.opponentCount,
-          { fontSize: responsiveSize ? responsiveSize.fontSize.medium : 12 },
-        ]}
-      >
-        {player.handCount}
-      </Text>
-      <Text
-        style={[
-          styles.opponentScore,
-          { fontSize: responsiveSize ? responsiveSize.fontSize.small : 10 },
-          isEliminated && { color: "#e74c3c" },
-        ]}
-      >
-        {playerScore}pts
-      </Text>
-      {unoFlag && (
-        <Text
-          style={[
-            styles.unoBadge,
-            { fontSize: responsiveSize ? responsiveSize.fontSize.small : 10 },
-          ]}
-        >
-          UNO{unoFlag.graceRemainingMs > 0 ? "*" : ""}
-        </Text>
-      )}
-
-      {/* Botón de reclamar UNO */}
-      {playersWithOneCard &&
-        playersWithOneCard.includes(player.id) &&
-        onClaimUno &&
-        !unoFlag &&
-        !isEliminated && (
-          <TouchableOpacity
-            style={{
-              position: "absolute",
-              bottom: -5,
-              right: -5,
-              backgroundColor: "#e74c3c",
-              borderRadius: 12,
-              padding: 4,
-              borderWidth: 1,
-              borderColor: "#fff",
-              shadowColor: "#000",
-              shadowOpacity: 0.3,
-              shadowRadius: 3,
-              shadowOffset: { width: 1, height: 1 },
-              elevation: 3,
-            }}
-            onPress={() => onClaimUno(player.id)}
-          >
-            <Text
-              style={{
-                color: "#fff",
-                fontSize: 8,
-                fontWeight: "bold",
-              }}
-            >
-              UNO!
-            </Text>
-          </TouchableOpacity>
-        )}
-    </View>
-  );
-}
-
-function ActionBar({
-  isMyTurn,
-  hand,
-  publicState,
-  me,
-  otherPlayers,
-  onDraw,
-  onDeclareUno,
-  onChallenge,
-  onAcceptWild4,
-  onChatToggle,
-  playersWithOneCard,
-  onClaimUno,
-  socket,
-  roomId,
-}) {
-  // Forzar re-render para actualizar graceRemainingMs en tiempo real
-  const [_, force] = useState(0);
-  useEffect(() => {
-    // Solo activar el temporizador si hay jugadores en estado UNO
-    const unoData = publicState.uno || [];
-    if (unoData.length > 0 && socket && roomId) {
-      const id = setInterval(() => {
-        force((x) => x + 1);
-        // Solicitar estado actualizado al backend para obtener graceRemainingMs actualizado
-        socket.emit("getState", { roomId });
-      }, 300);
-      return () => clearInterval(id);
-    }
-  }, [publicState.uno, socket, roomId]);
-
-  const unoData = publicState.uno || [];
-  const myHandSize = hand.length;
-  const pending = publicState.pendingDrawCount;
-  const pendingType = publicState.pendingDrawType;
-  const challenge = publicState.wild4Challenge;
-
-  const canDeclareUno =
-    myHandSize === 1 && unoData.find((u) => u.playerId === me && !u.declared);
-
-  // Challenge activo para mí (soy target del +4 y aún dentro de ventana)
-  const challengeActive = challenge && challenge.targetPlayer === me;
-
-  // Puedo desafiar si hay un challenge activo y estoy en la lista de elegibles
-  const canChallenge =
-    challenge &&
-    challenge.eligibleChallengers &&
-    challenge.eligibleChallengers.includes(me);
-
-  // Detectar jugadores que pueden ser reclamados por UNO
-  const playersToClaimUno = otherPlayers.filter((p) => {
-    // Buscar en unoData si este jugador tiene información de UNO
-    const unoFlag = unoData.find((u) => u.playerId === p.id);
-
-    // Condiciones para poder reclamar:
-    // 1. El jugador tiene 1 carta (está en playersWithOneCard O tiene unoFlag)
-    // 2. No ha declarado UNO (declared = false)
-    // 3. El período de gracia ha expirado (graceRemainingMs <= 0)
-    const hasOneCard = playersWithOneCard?.includes(p.id) || !!unoFlag;
-    const hasNotDeclaredUno = unoFlag && !unoFlag.declared;
-    const graceExpired = unoFlag && unoFlag.graceRemainingMs <= 0;
-
-    console.log(
-      `[UNO DEBUG] Player ${p.name}: hasOneCard=${hasOneCard}, hasNotDeclaredUno=${hasNotDeclaredUno}, graceExpired=${graceExpired}, graceRemainingMs=${unoFlag?.graceRemainingMs}, declared=${unoFlag?.declared}`
-    );
-
-    return hasOneCard && hasNotDeclaredUno && graceExpired;
-  });
-
-  // Logs de debug más detallados
-  if (unoData.length > 0) {
-    console.log(`[UNO DEBUG] === Estado UNO ===`);
-    console.log(`[UNO DEBUG] playersWithOneCard:`, playersWithOneCard);
-    console.log(`[UNO DEBUG] unoData:`, unoData);
-    console.log(
-      `[UNO DEBUG] playersToClaimUno:`,
-      playersToClaimUno.map((p) => p.name)
-    );
-    console.log(`[UNO DEBUG] ==================`);
-  }
-
-  // Caso especial: si challengeActive => reemplazamos Robar por botones Desafiar / Tomar +N
-  // 'Tomar +N' ejecuta onDraw (paga las cartas acumuladas) y avanza turno.
-  // Mientras dure el challenge no mostramos declarar UNO ni acusar.
-  if (challengeActive) {
-    const drawLabel = pending > 0 ? `Tomar +${pending}` : "Tomar +4";
-    return (
-      <View style={styles.actionBarContainer}>
-        {/* Botón de chat a la izquierda */}
-        <TouchableOpacity
-          style={[styles.actionBtn, { backgroundColor: "#3498db" }]}
-          onPress={onChatToggle}
-        >
-          <Ionicons name="chatbubbles" size={18} color="white" />
-        </TouchableOpacity>
-
-        {/* Contenedor para los botones de acción centrales */}
-        <View style={{ flexDirection: "row", gap: 10 }}>
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.dangerBtn]}
-            onPress={onChallenge}
-          >
-            <Text style={styles.actionText}>Desafiar</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: "#8e44ad" }]}
-            onPress={onDraw}
-          >
-            <Text style={styles.actionText}>{drawLabel}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Espaciador a la derecha para balance */}
-        <View style={{ width: 40 }} />
-      </View>
-    );
-  }
-
-  // Botón Robar visible en mi turno (si hay acumulación draw2/draw4 stacking y soy el jugador actual)
-  const showDraw = isMyTurn;
-  const drawLabel = pending > 0 ? `Tomar +${pending}` : "Robar";
-
-  return (
-    <View style={styles.actionBarContainer}>
-      {/* Botón de chat a la izquierda */}
-      <TouchableOpacity
-        style={[styles.actionBtn, { backgroundColor: "#3498db" }]}
-        onPress={onChatToggle}
-      >
-        <Ionicons name="chatbubbles" size={18} color="white" />
-      </TouchableOpacity>
-
-      {/* Contenedor para los botones de acción centrales */}
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        {showDraw && (
-          <TouchableOpacity
-            style={[
-              styles.actionBtn,
-              pending > 0 && { backgroundColor: "#8e44ad" },
-            ]}
-            onPress={onDraw}
-          >
-            <Text style={styles.actionText}>{drawLabel}</Text>
-          </TouchableOpacity>
-        )}
-        {canDeclareUno && (
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.warnBtn]}
-            onPress={onDeclareUno}
-          >
-            <Text style={styles.actionText}>Decir UNO</Text>
-          </TouchableOpacity>
-        )}
-        {playersToClaimUno.length > 0 && (
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.dangerBtn]}
-            onPress={() => {
-              // Si hay múltiples jugadores, tomar el primero (podrías agregar lógica más sofisticada)
-              const targetPlayer = playersToClaimUno[0];
-              if (targetPlayer && onClaimUno) {
-                onClaimUno(targetPlayer.id);
-              }
-            }}
-          >
-            <Text style={styles.actionText}>Acusar</Text>
-          </TouchableOpacity>
-        )}
-        {canChallenge && !challengeActive && (
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.dangerBtn]}
-            onPress={onChallenge}
-          >
-            <Text style={styles.actionText}>Desafiar +4</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Espaciador a la derecha para balance */}
-      <View style={{ width: 40 }} />
-    </View>
-  );
-}
-
-function Countdowns({ publicState, me }) {
-  const [_, force] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => force((x) => x + 1), 300);
-    return () => clearInterval(id);
-  }, []);
-  const unoData = publicState.uno || [];
-  const myUno = unoData.find(
-    (u) => u.playerId === me && u.graceRemainingMs > 0
-  );
-  return (
-    <View style={{ marginTop: 4, alignItems: "center" }}>
-      {myUno && (
-        <Text style={{ color: "#f1c40f", fontSize: 12 }}>
-          Decí UNO {Math.ceil(myUno.graceRemainingMs / 1000)}s
-        </Text>
-      )}
-    </View>
   );
 }
