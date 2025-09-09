@@ -29,6 +29,8 @@ import {
   UnoClaimResultModal,
 } from "../components";
 import CardEffects from "../components/CardEffects";
+import AudioControlPanel from "../components/AudioControlPanel";
+import { useBackgroundMusic } from "../hooks/useBackgroundMusic";
 import UnoGameSummaryModal from "../components/GameSummaryModal";
 import { SHOW_DEBUG } from "../../../core/config/debug";
 
@@ -76,6 +78,19 @@ export default function UnoGameScreen() {
   const { socket } = useSocket();
   const { syncPlayers, getAvatarUrl, syncAvatar } = useAvatarSync();
   const { myAvatar, myUsername, myName } = useMyAvatar();
+
+  // Hook para música de fondo
+  const {
+    isPlaying,
+    volume,
+    showAudioPanel,
+    startMusic,
+    stopMusic,
+    toggleMusic,
+    changeVolume,
+    toggleAudioPanel,
+    closeAudioPanel,
+  } = useBackgroundMusic();
 
   const [publicState, setPublicState] = useState(initialPublic);
   const [hand, setHand] = useState([]); // cartas privadas
@@ -587,6 +602,26 @@ export default function UnoGameScreen() {
     me,
   ]);
 
+  // 🎵 Control de música de fondo según el estado del juego
+  useEffect(() => {
+    if (publicState.started && !publicState.gameEnded && !isPlaying) {
+      // Solo iniciar música automáticamente cuando empiece el juego
+      // No parar automáticamente para respetar la elección del usuario
+      startMusic();
+    }
+    // Nota: No paramos la música automáticamente cuando termina el juego
+    // para que el usuario mantenga control manual
+  }, [publicState.started, publicState.gameEnded, isPlaying]); // Removido stopMusic
+
+  // 🧹 Limpiar música al desmontar el componente
+  useEffect(() => {
+    return () => {
+      if (isPlaying) {
+        stopMusic();
+      }
+    };
+  }, []); // Solo ejecutar al montar/desmontar
+
   // 🔧 detectar jugadores con una sola carta para habilitar reclamo UNO
   useEffect(() => {
     if (!publicState.started || publicState.gameEnded) {
@@ -919,7 +954,13 @@ export default function UnoGameScreen() {
           <Ionicons name="arrow-back" size={22} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.title}>UNO</Text>
-        <View style={{ width: 32 }} />
+        <TouchableOpacity onPress={toggleAudioPanel} style={styles.backBtn}>
+          <Ionicons
+            name={isPlaying ? "volume-high" : "volume-mute"}
+            size={22}
+            color="#fff"
+          />
+        </TouchableOpacity>
       </View>
 
       <View
@@ -1215,6 +1256,16 @@ export default function UnoGameScreen() {
         onComplete={() =>
           setCardEffects({ visible: false, cardType: null, color: null })
         }
+      />
+
+      {/* Panel de control de audio */}
+      <AudioControlPanel
+        visible={showAudioPanel}
+        isPlaying={isPlaying}
+        volume={volume}
+        onToggleMusic={toggleMusic}
+        onVolumeChange={changeVolume}
+        onClose={closeAudioPanel}
       />
     </SafeAreaView>
   );

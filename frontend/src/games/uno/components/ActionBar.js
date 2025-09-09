@@ -1,6 +1,107 @@
-import React, { useEffect, useState } from "react";
-import { View, TouchableOpacity, Text, StyleSheet } from "react-native";
+import React, { useEffect, useState, useRef } from "react";
+import {
+  View,
+  TouchableOpacity,
+  Text,
+  StyleSheet,
+  Animated,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+
+// Componente de botón mejorado con gradiente y animaciones
+const EnhancedButton = ({
+  onPress,
+  colors,
+  children,
+  style,
+  disabled = false,
+}) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const opacityAnim = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.parallel([
+      Animated.timing(scaleAnim, {
+        toValue: 0.95,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacityAnim, {
+        toValue: 0.8,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.parallel([
+      Animated.timing(scaleAnim, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacityAnim, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const handlePress = () => {
+    // Animación de "bounce" al presionar
+    Animated.sequence([
+      Animated.timing(scaleAnim, {
+        toValue: 0.9,
+        duration: 50,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 300,
+        friction: 10,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    // Ejecutar la función onPress después de un pequeño delay
+    setTimeout(() => {
+      if (onPress) onPress();
+    }, 50);
+  };
+
+  return (
+    <Animated.View
+      style={[
+        styles.buttonWrapper,
+        style,
+        {
+          transform: [{ scale: scaleAnim }],
+          opacity: opacityAnim,
+        },
+      ]}
+    >
+      <TouchableOpacity
+        onPress={handlePress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        disabled={disabled}
+        activeOpacity={1} // Manejamos la opacidad con nuestra animación
+      >
+        <LinearGradient
+          colors={disabled ? ["#555", "#444"] : colors}
+          style={styles.gradientButton}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          {children}
+        </LinearGradient>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
 
 export default function ActionBar({
   isMyTurn,
@@ -110,31 +211,28 @@ export default function ActionBar({
     return (
       <View style={styles.actionBarContainer}>
         {/* Botón de chat a la izquierda */}
-        <TouchableOpacity
-          style={[styles.actionBtn, { backgroundColor: "#3498db" }]}
-          onPress={onChatToggle}
-        >
+        <EnhancedButton onPress={onChatToggle} colors={["#3498db", "#2980b9"]}>
           <Ionicons name="chatbubbles" size={18} color="white" />
-        </TouchableOpacity>
+        </EnhancedButton>
 
         {/* Contenedor para los botones de acción centrales */}
-        <View style={{ flexDirection: "row", gap: 10 }}>
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.dangerBtn]}
-            onPress={onChallenge}
-          >
-            <Text style={styles.actionText}>Desafiar</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: "#8e44ad" }]}
-            onPress={onDraw}
-          >
-            <Text style={styles.actionText}>{drawLabel}</Text>
-          </TouchableOpacity>
+        <View style={{ flexDirection: "row", gap: 12 }}>
+          <EnhancedButton onPress={onChallenge} colors={["#e74c3c", "#c0392b"]}>
+            <View style={styles.buttonContent}>
+              <Ionicons name="flash" size={16} color="white" />
+              <Text style={styles.actionText}>Desafiar</Text>
+            </View>
+          </EnhancedButton>
+          <EnhancedButton onPress={onDraw} colors={["#9b59b6", "#8e44ad"]}>
+            <View style={styles.buttonContent}>
+              <Ionicons name="hand-left" size={16} color="white" />
+              <Text style={styles.actionText}>{drawLabel}</Text>
+            </View>
+          </EnhancedButton>
         </View>
 
         {/* Espaciador a la derecha para balance */}
-        <View style={{ width: 40 }} />
+        <View style={{ width: 50 }} />
       </View>
     );
   }
@@ -146,37 +244,42 @@ export default function ActionBar({
   return (
     <View style={styles.actionBarContainer}>
       {/* Botón de chat a la izquierda */}
-      <TouchableOpacity
-        style={[styles.actionBtn, { backgroundColor: "#3498db" }]}
-        onPress={onChatToggle}
-      >
+      <EnhancedButton onPress={onChatToggle} colors={["#3498db", "#2980b9"]}>
         <Ionicons name="chatbubbles" size={18} color="white" />
-      </TouchableOpacity>
+      </EnhancedButton>
 
       {/* Contenedor para los botones de acción centrales */}
-      <View style={{ flexDirection: "row", gap: 10 }}>
+      <View style={{ flexDirection: "row", gap: 12 }}>
         {showDraw && (
-          <TouchableOpacity
-            style={[
-              styles.actionBtn,
-              pending > 0 && { backgroundColor: "#8e44ad" },
-            ]}
+          <EnhancedButton
             onPress={onDraw}
+            colors={
+              pending > 0 ? ["#9b59b6", "#8e44ad"] : ["#34495e", "#2c3e50"]
+            }
           >
-            <Text style={styles.actionText}>{drawLabel}</Text>
-          </TouchableOpacity>
+            <View style={styles.buttonContent}>
+              <Ionicons
+                name={pending > 0 ? "hand-left" : "add-circle"}
+                size={16}
+                color="white"
+              />
+              <Text style={styles.actionText}>{drawLabel}</Text>
+            </View>
+          </EnhancedButton>
         )}
         {canDeclareUno && (
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.warnBtn]}
+          <EnhancedButton
             onPress={onDeclareUno}
+            colors={["#f39c12", "#e67e22"]}
           >
-            <Text style={styles.actionText}>Decir UNO</Text>
-          </TouchableOpacity>
+            <View style={styles.buttonContent}>
+              <Ionicons name="warning" size={16} color="white" />
+              <Text style={styles.actionText}>Decir UNO</Text>
+            </View>
+          </EnhancedButton>
         )}
         {playersToClaimUno.length > 0 && (
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.dangerBtn]}
+          <EnhancedButton
             onPress={() => {
               // Reclamar al primer jugador de la lista
               const targetUnoPlayer = playersToClaimUno[0];
@@ -184,22 +287,26 @@ export default function ActionBar({
                 onClaimUno(targetUnoPlayer.playerId);
               }
             }}
+            colors={["#e74c3c", "#c0392b"]}
           >
-            <Text style={styles.actionText}>Acusar</Text>
-          </TouchableOpacity>
+            <View style={styles.buttonContent}>
+              <Ionicons name="alert-circle" size={16} color="white" />
+              <Text style={styles.actionText}>Acusar</Text>
+            </View>
+          </EnhancedButton>
         )}
         {canChallenge && !challengeActive && (
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.dangerBtn]}
-            onPress={onChallenge}
-          >
-            <Text style={styles.actionText}>Desafiar +4</Text>
-          </TouchableOpacity>
+          <EnhancedButton onPress={onChallenge} colors={["#e74c3c", "#c0392b"]}>
+            <View style={styles.buttonContent}>
+              <Ionicons name="flash" size={16} color="white" />
+              <Text style={styles.actionText}>Desafiar +4</Text>
+            </View>
+          </EnhancedButton>
         )}
       </View>
 
       {/* Espaciador a la derecha para balance */}
-      <View style={{ width: 40 }} />
+      <View style={{ width: 50 }} />
     </View>
   );
 }
@@ -207,23 +314,53 @@ export default function ActionBar({
 const styles = StyleSheet.create({
   actionBarContainer: {
     flexDirection: "row",
-    justifyContent: "space-between", // Cambiado de space-around a space-between
+    justifyContent: "space-between",
     alignItems: "center",
-    height: 56, // Altura fija para evitar layout shifts
+    height: 64, // Aumentada altura para acomodar botones más grandes
     paddingHorizontal: 12,
-    backgroundColor: "rgba(17,17,17,0.2)", // Reducida opacidad a 0.2
+    backgroundColor: "rgba(17,17,17,0.2)",
     borderTopWidth: 1,
     borderTopColor: "#222",
     borderBottomWidth: 1,
     borderBottomColor: "#222",
   },
+  buttonWrapper: {
+    borderRadius: 12,
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  gradientButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    minWidth: 50,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  buttonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  actionText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 13,
+    textAlign: "center",
+  },
+  // Estilos legacy mantenidos para compatibilidad
   actionBtn: {
     backgroundColor: "#34495e",
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 8,
   },
-  actionText: { color: "#fff", fontWeight: "600" },
   disabledBtn: { opacity: 0.35 },
   dangerBtn: { backgroundColor: "#c0392b" },
   successBtn: { backgroundColor: "#16a085" },

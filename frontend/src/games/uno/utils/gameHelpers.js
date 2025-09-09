@@ -6,7 +6,7 @@ export function shortId(id) {
 // Función para obtener el color de fondo de la mesa basado en currentColor
 export function getTableBackgroundColor(currentColor) {
   const colorMap = {
-    red: "#d73a3a", // Rojo suave
+    red: "#ea3131ff", // Rojo suave
     blue: "#4a7fd6", // Azul suave
     green: "#3cb371", // Verde suave
     yellow: "#f2c42bd4", // Amarillo suave

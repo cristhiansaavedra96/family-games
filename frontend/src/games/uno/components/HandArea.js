@@ -7,6 +7,7 @@ import {
   Image,
   PanResponder,
   Animated,
+  Vibration,
 } from "react-native";
 import { getUnoCardImage } from "../utils/cardAssets";
 import AnimatedCard from "./AnimatedCard";
@@ -177,6 +178,26 @@ export default function HandArea({
         cardRefs.current[card.id].bounce();
       }
       return;
+    }
+
+    // 🎮 Vibración inmediata cuando se juega cualquier carta
+    try {
+      if (card.kind === "wild" || card.kind === "wild_draw4") {
+        // Patrón especial para cartas wild
+        Vibration.vibrate([0, 100, 50, 100]);
+      } else if (
+        card.kind === "draw2" ||
+        card.kind === "skip" ||
+        card.kind === "reverse"
+      ) {
+        // Vibración media para cartas especiales
+        Vibration.vibrate(150);
+      } else {
+        // Vibración corta para cartas normales
+        Vibration.vibrate(100);
+      }
+    } catch (error) {
+      // Ignorar errores de vibración en simuladores
     }
 
     // Solo marcar como "playing" si no es una carta wild (que requiere selección de color)
@@ -420,7 +441,7 @@ export default function HandArea({
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.5)",
+            backgroundColor: "rgba(0, 0, 0, 0.3)",
             zIndex: 10,
           }}
           pointerEvents="none"
