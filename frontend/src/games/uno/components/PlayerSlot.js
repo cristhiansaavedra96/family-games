@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { SHOW_DEBUG } from "../../../core/config/debug";
 import Opponent from "./Opponent";
 
@@ -17,6 +17,8 @@ export default function PlayerSlot({
   onClaimUno,
   me,
   currentPlayer,
+  shouldEnlarge,
+  shouldMoveDown,
 }) {
   if (player) {
     // Si hay un jugador asignado, mostrar el componente Opponent normal
@@ -34,6 +36,8 @@ export default function PlayerSlot({
         onClaimUno={onClaimUno}
         me={me}
         currentPlayer={currentPlayer}
+        shouldEnlarge={shouldEnlarge}
+        shouldMoveDown={shouldMoveDown}
       />
     );
   }

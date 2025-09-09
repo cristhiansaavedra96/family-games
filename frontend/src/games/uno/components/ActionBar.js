@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     height: 56, // Altura fija para evitar layout shifts
     paddingHorizontal: 12,
-    backgroundColor: "#111",
+    backgroundColor: "rgba(17,17,17,0.2)", // Reducida opacidad a 0.2
     borderTopWidth: 1,
     borderTopColor: "#222",
     borderBottomWidth: 1,

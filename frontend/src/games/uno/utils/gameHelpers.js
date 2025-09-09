@@ -6,13 +6,13 @@ export function shortId(id) {
 // Función para obtener el color de fondo de la mesa basado en currentColor
 export function getTableBackgroundColor(currentColor) {
   const colorMap = {
-    red: "#4a1c1c", // Rojo oscuro
-    blue: "#1c2c4a", // Azul oscuro
-    green: "#1c4a2c", // Verde oscuro
-    yellow: "#4a4a1c", // Amarillo oscuro
-    wild: "#3c2a4a", // Púrpura oscuro para wild
+    red: "#d73a3a", // Rojo suave
+    blue: "#4a7fd6", // Azul suave
+    green: "#3cb371", // Verde suave
+    yellow: "#f2c42bd4", // Amarillo suave
+    wild: "#8e7db8", // Púrpura suave para wild
   };
-  return colorMap[currentColor?.toLowerCase()] || "#0d3b24"; // Verde por defecto
+  return colorMap[currentColor?.toLowerCase()] || "#2d6b3a"; // Verde por defecto
 }
 
 // Función para obtener el color del borde de la mesa basado en currentColor
@@ -25,6 +25,18 @@ export function getTableBorderColor(currentColor) {
     wild: "#54396b", // Púrpura borde para wild
   };
   return colorMap[currentColor?.toLowerCase()] || "#145c36"; // Verde por defecto
+}
+
+// Función para obtener el color del contador de cartas del mazo basado en currentColor
+export function getDeckCountColor(currentColor) {
+  const colorMap = {
+    red: "#ffffff", // Blanco para contraste con rojo
+    blue: "#ffffff", // Blanco para contraste con azul
+    green: "#ffffff", // Blanco para contraste con verde
+    yellow: "#1a1a1a", // Negro casi puro para mejor contraste con amarillo
+    wild: "#ffffff", // Blanco para contraste con púrpura
+  };
+  return colorMap[currentColor?.toLowerCase()] || "#ffffff"; // Blanco por defecto
 }
 
 // Función para obtener las posiciones según el número total de jugadores

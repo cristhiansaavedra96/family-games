@@ -4,10 +4,10 @@ import {
   Text,
   TouchableOpacity,
   Image,
-  Modal,
   Animated,
   Dimensions,
   StyleSheet,
+  Vibration,
 } from "react-native";
 import {
   SafeAreaView,
@@ -19,6 +19,7 @@ import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSocket } from "../../../shared/hooks";
 import { ChatPanel, ChatButton, ChatToasts } from "../../../shared/components";
+import ColorSelectorModal from "../components/ColorSelectorModal";
 import { useAvatarSync, useMyAvatar } from "../../../shared/hooks";
 import { getUnoCardImage } from "../utils/cardAssets";
 import {
@@ -27,6 +28,7 @@ import {
   DebugPanel,
   UnoClaimResultModal,
 } from "../components";
+import CardEffects from "../components/CardEffects";
 import UnoGameSummaryModal from "../components/GameSummaryModal";
 import { SHOW_DEBUG } from "../../../core/config/debug";
 
@@ -97,10 +99,18 @@ export default function UnoGameScreen() {
   // UNO Claim system state
   const [unoClaimResult, setUnoClaimResult] = useState(null); // Resultado del reclamo UNO
   const [playersWithOneCard, setPlayersWithOneCard] = useState([]); // Jugadores con 1 carta que pueden ser reclamados
+  // Card effects state
+  const [cardEffects, setCardEffects] = useState({
+    visible: false,
+    cardType: null,
+    color: null,
+  });
+  const [lastPlayedCard, setLastPlayedCard] = useState(null); // Para tracking de la última carta jugada
   const dragY = useRef(new Animated.Value(0)).current;
   const dragX = useRef(new Animated.Value(0)).current;
   const dragCardId = useRef(null);
   const dragActive = useRef(false);
+  const centerTableRef = useRef(null); // Referencia al componente CenterTable
 
   // Sistema responsivo
   const [screenData, setScreenData] = useState(Dimensions.get("window"));
@@ -281,7 +291,17 @@ export default function UnoGameScreen() {
       console.log("[UNO] drawCardResult", res);
     });
 
-    // Eventos específicos UNO (placeholders para futura UI avanzada)
+    // Listener para cuando se juega una carta exitosamente (backup/redundancia)
+    socket.on("playCardResult", (result) => {
+      console.log("[UNO][Frontend] playCardResult received:", result);
+      // Las animaciones principales ahora se manejan automáticamente en CenterTable
+      // Este listener se mantiene como fallback para casos donde el estado no se actualice inmediatamente
+
+      // Limpiar la carta guardada después de un momento
+      setTimeout(() => {
+        setLastPlayedCard(null);
+      }, 1000);
+    }); // Eventos específicos UNO (placeholders para futura UI avanzada)
     socket.on("wild4ChallengeAvailable", (data) => {
       console.log("[UNO][Frontend] wild4ChallengeAvailable received:", data);
       setPublicState((prevData) => ({
@@ -486,6 +506,7 @@ export default function UnoGameScreen() {
       socket.off("privateHand", onPrivateHand);
       socket.off("joined", onJoined);
       socket.off("drawCardResult");
+      socket.off("playCardResult");
       socket.off("wild4ChallengeAvailable");
       socket.off("wild4ChallengeResult");
       socket.off("unoDeclared");
@@ -543,6 +564,28 @@ export default function UnoGameScreen() {
       );
     }
   }, [hand.length]);
+
+  // 🔧 Vibración cuando un rival juega una carta
+  const previousCurrentPlayer = useRef(publicState.currentPlayer);
+  useEffect(() => {
+    // Solo vibrar si el juego ha empezado y hay un cambio de turno
+    if (!publicState.started || publicState.gameEnded) return;
+
+    const currentPlayer = publicState.currentPlayer;
+    const prevPlayer = previousCurrentPlayer.current;
+
+    // Si cambió el jugador actual y el anterior no era yo, vibrar
+    if (currentPlayer !== prevPlayer && prevPlayer && prevPlayer !== me) {
+      Vibration.vibrate(100); // Vibración corta de 100ms
+    }
+
+    previousCurrentPlayer.current = currentPlayer;
+  }, [
+    publicState.currentPlayer,
+    publicState.started,
+    publicState.gameEnded,
+    me,
+  ]);
 
   // 🔧 detectar jugadores con una sola carta para habilitar reclamo UNO
   useEffect(() => {
@@ -602,16 +645,6 @@ export default function UnoGameScreen() {
       });
     }, 1000);
   }, []);
-
-  // Debug: verificar el currentColor (solo cuando cambia el color, no cada segundo)
-  useEffect(() => {
-    console.log("🎨 Public state updated:", publicState);
-    console.log("🎨 Current Color:", publicState.currentColor);
-    console.log(
-      "🎨 Background Color:",
-      getTableBackgroundColor(publicState.currentColor)
-    );
-  }, [publicState.currentColor, publicState.started, publicState.gameEnded]); // Solo cuando cambian cosas importantes
 
   // Acciones básicas
   const handleDraw = () => {
@@ -680,24 +713,70 @@ export default function UnoGameScreen() {
   // Jugar carta (por ahora sin selector de color para wild -> se enviará null)
   const playCard = (card) => {
     if (!isMyTurn) return;
+
+    // Guardar la carta que se está jugando para usar en animaciones
+    setLastPlayedCard(card);
+    console.log(
+      "[UNO][Frontend] Setting lastPlayedCard:",
+      card.kind,
+      card.color
+    );
+
     if (card.kind === "wild" || card.kind === "wild_draw4") {
+      // Para cartas Wild, NO mostrar efectos hasta seleccionar color
       setWildColorModal(card.id);
       return;
     }
+
+    // Solo para cartas normales, mostrar efectos inmediatamente
+    const cardColor = card.color || "#FFD700";
+    setCardEffects({
+      visible: true,
+      cardType: card.kind,
+      color: cardColor,
+    });
+
     socket.emit("playCard", { roomId, cardId: card.id, chosenColor: null });
   };
 
   const confirmWildColor = (color) => {
     if (!wildColorModal) return;
+
+    // Buscar la carta wild en la mano para guardarla
+    const wildCard = hand.find((card) => card.id === wildColorModal);
+    if (wildCard) {
+      setLastPlayedCard(wildCard);
+    }
+
+    // AHORA SÍ mostrar efectos después de seleccionar el color
+    setCardEffects({
+      visible: true,
+      cardType: wildCard?.kind || "wild",
+      color: color,
+    });
+
+    console.log("[UNO][Frontend] Playing wild card with color:", color);
+
     socket.emit("playCard", {
       roomId,
       cardId: wildColorModal,
       chosenColor: color,
     });
+
     setWildColorModal(null);
+    // Las animaciones del centro ahora se manejan automáticamente
+    // cuando el estado público se actualiza desde el servidor
   };
 
-  const cancelWild = () => setWildColorModal(null);
+  const cancelWild = () => {
+    // Cerrar el modal sin realizar ninguna acción
+    // La carta debería permanecer en la mano del jugador
+    // ya que nunca se envió al servidor para cartas wild
+    setWildColorModal(null);
+
+    // Log para debug - verificar que la carta sigue en la mano
+    console.log("Modal de color cancelado - carta debería permanecer en mano");
+  };
 
   // Game Summary handlers
   const handleCloseSummary = () => {
@@ -760,6 +839,39 @@ export default function UnoGameScreen() {
   // Crear estilos responsivos dinámicos
   const responsiveStyles = createResponsiveStyles(responsiveSize);
 
+  // Detectar número de jugadores activos para escalado especial
+  const activePlayers =
+    publicState.players?.filter(
+      (p) => !publicState.eliminatedPlayers?.includes(p.id)
+    ) || [];
+  const activePlayerCount = activePlayers.length;
+
+  // Función para determinar si un slot debe tener escala especial
+  const shouldEnlargeSlot = (position) => {
+    if (activePlayerCount === 2) {
+      // En 1v1, agrandar el rival (1x2)
+      return position === "1x2";
+    } else if (activePlayerCount === 3) {
+      // En 3 jugadores, agrandar los rivales (1x1 y 1x3)
+      return position === "1x1" || position === "1x3";
+    }
+    return false;
+  };
+
+  // Función para determinar si mi posición (5x2) necesita margen adicional hacia abajo
+  const shouldMoveMyPositionDown = (position, player) => {
+    // Solo para mi posición cuando hay pocos jugadores
+    if (
+      position === "5x2" &&
+      player &&
+      player.id === me &&
+      activePlayerCount <= 3
+    ) {
+      return true;
+    }
+    return false;
+  };
+
   // Props comunes para PlayerSlot
   const getPlayerSlotProps = (position, player) => ({
     position,
@@ -775,12 +887,30 @@ export default function UnoGameScreen() {
     onClaimUno: handleClaimUno,
     me,
     currentPlayer: publicState.currentPlayer, // Agregar información del turno actual
+    shouldEnlarge: shouldEnlargeSlot(position), // Agregar información de escalado especial
+    shouldMoveDown: shouldMoveMyPositionDown(position, player), // Agregar información de margen adicional para mi posición
   });
 
+  const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#000" }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#0d1421" }}>
+      {/* Imagen de fondo de UNO - ocupando toda la altura y centrada */}
+      <Image
+        source={require("../../../images/uno/UNO-background.png")}
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: screenWidth,
+          height: screenHeight,
+          opacity: 1,
+        }}
+        resizeMode="cover" // Cubrir toda la altura, centrado automáticamente
+      />
+      {/* Gradiente más suave para mantener legibilidad */}
       <LinearGradient
-        colors={["#0f1f29", "#0b141a", "#05090c"]}
+        colors={["rgba(0,0,0,0.2)", "rgba(0,0,0,0.3)", "rgba(0,0,0,0.6)"]}
         style={StyleSheet.absoluteFill}
       />
       <StatusBar style="light" />
@@ -799,6 +929,7 @@ export default function UnoGameScreen() {
             paddingTop: isReallySmallScreen ? 1 : 4, // Casi sin padding arriba para Galaxy S23
             paddingBottom: isReallySmallScreen ? 2 : 12, // Menos padding abajo para Galaxy S23
             marginHorizontal: 2, // Margen horizontal mínimo de 2px
+            marginTop: activePlayerCount <= 3 ? 20 : 0, // Mover zona de juego más abajo en partidas de hasta 3 jugadores
           },
         ]}
       >
@@ -834,6 +965,7 @@ export default function UnoGameScreen() {
 
           {/* Centro de la mesa - centrado horizontalmente, filas 3-4 */}
           <CenterTable
+            ref={centerTableRef}
             publicState={publicState}
             responsiveStyles={responsiveStyles}
             responsiveSize={responsiveSize}
@@ -915,45 +1047,8 @@ export default function UnoGameScreen() {
         roomId={roomId}
         me={me}
         publicState={publicState}
+        wildColorModal={wildColorModal} // Pasar el modal para detectar cancelaciones
       />
-
-      <Modal visible={!!wildColorModal} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.colorWheelWrapper}>
-            {[
-              { k: "red", c: "#ec321dff" },
-              { k: "yellow", c: "#f1c40f" },
-              { k: "green", c: "#289455ff" },
-              { k: "blue", c: "#2893dbff" },
-            ].map((col, idx) => {
-              const positions = [
-                { top: 22, left: "50%", transform: [{ translateX: -40 }] },
-                { top: "50%", right: 22, transform: [{ translateY: -40 }] },
-                { bottom: 22, left: "50%", transform: [{ translateX: -40 }] },
-                { top: "50%", left: 22, transform: [{ translateY: -40 }] },
-              ];
-              return (
-                <TouchableOpacity
-                  key={col.k}
-                  style={[
-                    styles.colorDot,
-                    { backgroundColor: col.c },
-                    positions[idx],
-                  ]}
-                  onPress={() => confirmWildColor(col.k)}
-                  activeOpacity={0.85}
-                />
-              );
-            })}
-            <TouchableOpacity
-              style={styles.closeColorPicker}
-              onPress={cancelWild}
-            >
-              <Ionicons name="close" size={26} color="#fff" />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
 
       {/* Chat Toasts */}
       <ChatToasts
@@ -1104,6 +1199,23 @@ export default function UnoGameScreen() {
           </Text>
         </View>
       )}
+
+      {/* Modal de selección de color para cartas Wild */}
+      <ColorSelectorModal
+        visible={!!wildColorModal}
+        onClose={cancelWild}
+        onColorSelect={confirmWildColor}
+      />
+
+      {/* Efectos especiales de cartas */}
+      <CardEffects
+        visible={cardEffects.visible}
+        cardType={cardEffects.cardType}
+        color={cardEffects.color}
+        onComplete={() =>
+          setCardEffects({ visible: false, cardType: null, color: null })
+        }
+      />
     </SafeAreaView>
   );
 }

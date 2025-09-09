@@ -236,13 +236,12 @@ export const styles = StyleSheet.create({
     borderRadius: 5,
   },
   deckCountText: {
-    color: "#f1c40f",
     fontWeight: "700",
     fontSize: 10,
     marginTop: 3,
     textAlign: "center",
     textShadowColor: "#000",
-    textShadowRadius: 2,
+    textShadowRadius: 1,
     textShadowOffset: { width: 0, height: 1 },
   },
   discardZone: {
@@ -341,7 +340,7 @@ export const styles = StyleSheet.create({
   },
   handArea: {
     height: 140,
-    backgroundColor: "#181818",
+    backgroundColor: "rgba(24,24,24,0.2)", // Reducida opacidad a 0.2
     borderTopWidth: 1,
     borderTopColor: "#222",
     borderBottomWidth: 1,
@@ -435,22 +434,14 @@ export const styles = StyleSheet.create({
     borderRadius: 6,
   },
   reloadBtnText: { color: "#fff", fontWeight: "600" },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  colorWheelWrapper: {
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: "rgba(30,30,30,0.9)",
+
+  // Estilos para el modal de color personalizado
+  colorWheelContent: {
     position: "relative",
-    alignItems: "center",
+    width: "100%",
+    height: "100%",
     justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "#444",
+    alignItems: "center",
   },
   colorDot: {
     position: "absolute",
@@ -464,19 +455,6 @@ export const styles = StyleSheet.create({
     elevation: 6,
     borderWidth: 3,
     borderColor: "#111",
-  },
-  closeColorPicker: {
-    position: "absolute",
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: "#222",
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.5,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
   },
   dragOverlayCard: {
     position: "absolute",
