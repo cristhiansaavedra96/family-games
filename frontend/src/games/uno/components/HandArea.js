@@ -411,6 +411,22 @@ export default function HandArea({
         </View>
       )}
 
+      {/* Overlay oscuro cuando no es mi turno */}
+      {!isMyTurn && (
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.5)",
+            zIndex: 10,
+          }}
+          pointerEvents="none"
+        />
+      )}
+
       {/* Overlay de drag global para mostrar la carta fuera del contenedor */}
       {isDragging && selectedCardId && (
         <Animated.View
