@@ -4,11 +4,11 @@ import { Asset } from "expo-asset";
 
 // Cambiar imports por requires para mejor bundling
 const sources = {
-  background: require("../assets/sounds/background_music.mp3"),
-  start: require("../assets/sounds/start.mp3"),
-  win: require("../assets/sounds/win.mp3"),
-  select: require("../assets/sounds/select.mp3"),
-  logro: require("../assets/sounds/logro.mp3"),
+  background: require("../../../../assets/sound/bingo/background_music.mp3"),
+  start: require("../../../../assets/sound/bingo/start.mp3"),
+  win: require("../../../../assets/sound/bingo/win.mp3"),
+  select: require("../../../../assets/sound/bingo/select.mp3"),
+  logro: require("../../../../assets/sound/bingo/logro.mp3"),
 };
 
 export function useBingoSound() {

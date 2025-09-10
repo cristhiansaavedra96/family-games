@@ -17,12 +17,7 @@
       "fallbackToCacheTimeout": 10000,
       "url": "https://u.expo.dev/d443c4ff-0a55-4aba-acf5-9fdd6bbc5034"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
-    "ios": {
-      "supportsTablet": true
-    },
+    "assetBundlePatterns": ["assets/**"],
     "android": {
       "package": "com.familygames.app",
       "usesCleartextTraffic": true,

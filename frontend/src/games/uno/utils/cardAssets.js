@@ -1,5 +1,5 @@
 // Mapping de cartas UNO a assets de imagen
-// Convenciones de nombres de archivos en src/images/naipes_uno:
+// Convenciones de nombres de archivos en src/images/card_decks/uno:
 // numeros: `${value}-${color}.png` (0-9, colores: rojo, amarillo, verde, azul)
 // +2: `plus2-${color}.png`
 // reverse: `swap-${color}.png`
@@ -8,82 +8,82 @@
 // wild: `change-color.png`
 // dorso: `back.png` (reemplaza empty.png)
 
-const base = require("../../../images/naipes_uno/back.png"); // dorso oficial
+const base = require("../../../../assets/images/card_decks/uno/back.png"); // dorso oficial
 
-const plus4 = require("../../../images/naipes_uno/plus4.png");
-const wild = require("../../../images/naipes_uno/change-color.png");
+const plus4 = require("../../../../assets/images/card_decks/uno/plus4.png");
+const wild = require("../../../../assets/images/card_decks/uno/change-color.png");
 
 // Metro no soporta require con template dinámico: declaramos un mapa estático.
 const numberCards = {
   rojo: {
-    0: require("../../../images/naipes_uno/0-rojo.png"),
-    1: require("../../../images/naipes_uno/1-rojo.png"),
-    2: require("../../../images/naipes_uno/2-rojo.png"),
-    3: require("../../../images/naipes_uno/3-rojo.png"),
-    4: require("../../../images/naipes_uno/4-rojo.png"),
-    5: require("../../../images/naipes_uno/5-rojo.png"),
-    6: require("../../../images/naipes_uno/6-rojo.png"),
-    7: require("../../../images/naipes_uno/7-rojo.png"),
-    8: require("../../../images/naipes_uno/8-rojo.png"),
-    9: require("../../../images/naipes_uno/9-rojo.png"),
+    0: require("../../../../assets/images/card_decks/uno/0-rojo.png"),
+    1: require("../../../../assets/images/card_decks/uno/1-rojo.png"),
+    2: require("../../../../assets/images/card_decks/uno/2-rojo.png"),
+    3: require("../../../../assets/images/card_decks/uno/3-rojo.png"),
+    4: require("../../../../assets/images/card_decks/uno/4-rojo.png"),
+    5: require("../../../../assets/images/card_decks/uno/5-rojo.png"),
+    6: require("../../../../assets/images/card_decks/uno/6-rojo.png"),
+    7: require("../../../../assets/images/card_decks/uno/7-rojo.png"),
+    8: require("../../../../assets/images/card_decks/uno/8-rojo.png"),
+    9: require("../../../../assets/images/card_decks/uno/9-rojo.png"),
   },
   amarillo: {
-    0: require("../../../images/naipes_uno/0-amarillo.png"),
-    1: require("../../../images/naipes_uno/1-amarillo.png"),
-    2: require("../../../images/naipes_uno/2-amarillo.png"),
-    3: require("../../../images/naipes_uno/3-amarillo.png"),
-    4: require("../../../images/naipes_uno/4-amarillo.png"),
-    5: require("../../../images/naipes_uno/5-amarillo.png"),
-    6: require("../../../images/naipes_uno/6-amarillo.png"),
-    7: require("../../../images/naipes_uno/7-amarillo.png"),
-    8: require("../../../images/naipes_uno/8-amarillo.png"),
-    9: require("../../../images/naipes_uno/9-amarillo.png"),
+    0: require("../../../../assets/images/card_decks/uno/0-amarillo.png"),
+    1: require("../../../../assets/images/card_decks/uno/1-amarillo.png"),
+    2: require("../../../../assets/images/card_decks/uno/2-amarillo.png"),
+    3: require("../../../../assets/images/card_decks/uno/3-amarillo.png"),
+    4: require("../../../../assets/images/card_decks/uno/4-amarillo.png"),
+    5: require("../../../../assets/images/card_decks/uno/5-amarillo.png"),
+    6: require("../../../../assets/images/card_decks/uno/6-amarillo.png"),
+    7: require("../../../../assets/images/card_decks/uno/7-amarillo.png"),
+    8: require("../../../../assets/images/card_decks/uno/8-amarillo.png"),
+    9: require("../../../../assets/images/card_decks/uno/9-amarillo.png"),
   },
   verde: {
-    0: require("../../../images/naipes_uno/0-verde.png"),
-    1: require("../../../images/naipes_uno/1-verde.png"),
-    2: require("../../../images/naipes_uno/2-verde.png"),
-    3: require("../../../images/naipes_uno/3-verde.png"),
-    4: require("../../../images/naipes_uno/4-verde.png"),
-    5: require("../../../images/naipes_uno/5-verde.png"),
-    6: require("../../../images/naipes_uno/6-verde.png"),
-    7: require("../../../images/naipes_uno/7-verde.png"),
-    8: require("../../../images/naipes_uno/8-verde.png"),
-    9: require("../../../images/naipes_uno/9-verde.png"),
+    0: require("../../../../assets/images/card_decks/uno/0-verde.png"),
+    1: require("../../../../assets/images/card_decks/uno/1-verde.png"),
+    2: require("../../../../assets/images/card_decks/uno/2-verde.png"),
+    3: require("../../../../assets/images/card_decks/uno/3-verde.png"),
+    4: require("../../../../assets/images/card_decks/uno/4-verde.png"),
+    5: require("../../../../assets/images/card_decks/uno/5-verde.png"),
+    6: require("../../../../assets/images/card_decks/uno/6-verde.png"),
+    7: require("../../../../assets/images/card_decks/uno/7-verde.png"),
+    8: require("../../../../assets/images/card_decks/uno/8-verde.png"),
+    9: require("../../../../assets/images/card_decks/uno/9-verde.png"),
   },
   azul: {
-    0: require("../../../images/naipes_uno/0-azul.png"),
-    1: require("../../../images/naipes_uno/1-azul.png"),
-    2: require("../../../images/naipes_uno/2-azul.png"),
-    3: require("../../../images/naipes_uno/3-azul.png"),
-    4: require("../../../images/naipes_uno/4-azul.png"),
-    5: require("../../../images/naipes_uno/5-azul.png"),
-    6: require("../../../images/naipes_uno/6-azul.png"),
-    7: require("../../../images/naipes_uno/7-azul.png"),
-    8: require("../../../images/naipes_uno/8-azul.png"),
-    9: require("../../../images/naipes_uno/9-azul.png"),
+    0: require("../../../../assets/images/card_decks/uno/0-azul.png"),
+    1: require("../../../../assets/images/card_decks/uno/1-azul.png"),
+    2: require("../../../../assets/images/card_decks/uno/2-azul.png"),
+    3: require("../../../../assets/images/card_decks/uno/3-azul.png"),
+    4: require("../../../../assets/images/card_decks/uno/4-azul.png"),
+    5: require("../../../../assets/images/card_decks/uno/5-azul.png"),
+    6: require("../../../../assets/images/card_decks/uno/6-azul.png"),
+    7: require("../../../../assets/images/card_decks/uno/7-azul.png"),
+    8: require("../../../../assets/images/card_decks/uno/8-azul.png"),
+    9: require("../../../../assets/images/card_decks/uno/9-azul.png"),
   },
 };
 
 const plus2Cards = {
-  rojo: require("../../../images/naipes_uno/plus2-rojo.png"),
-  amarillo: require("../../../images/naipes_uno/plus2-amarillo.png"),
-  verde: require("../../../images/naipes_uno/plus2-verde.png"),
-  azul: require("../../../images/naipes_uno/plus2-azul.png"),
+  rojo: require("../../../../assets/images/card_decks/uno/plus2-rojo.png"),
+  amarillo: require("../../../../assets/images/card_decks/uno/plus2-amarillo.png"),
+  verde: require("../../../../assets/images/card_decks/uno/plus2-verde.png"),
+  azul: require("../../../../assets/images/card_decks/uno/plus2-azul.png"),
 };
 
 const reverseCards = {
-  rojo: require("../../../images/naipes_uno/swap-rojo.png"),
-  amarillo: require("../../../images/naipes_uno/swap-amarillo.png"),
-  verde: require("../../../images/naipes_uno/swap-verde.png"),
-  azul: require("../../../images/naipes_uno/swap-azul.png"),
+  rojo: require("../../../../assets/images/card_decks/uno/swap-rojo.png"),
+  amarillo: require("../../../../assets/images/card_decks/uno/swap-amarillo.png"),
+  verde: require("../../../../assets/images/card_decks/uno/swap-verde.png"),
+  azul: require("../../../../assets/images/card_decks/uno/swap-azul.png"),
 };
 
 const skipCards = {
-  rojo: require("../../../images/naipes_uno/cancel-rojo.png"),
-  amarillo: require("../../../images/naipes_uno/cancel-amarillo.png"),
-  verde: require("../../../images/naipes_uno/cancel-verde.png"),
-  azul: require("../../../images/naipes_uno/cancel-azul.png"), // confirmado nombre con guion
+  rojo: require("../../../../assets/images/card_decks/uno/cancel-rojo.png"),
+  amarillo: require("../../../../assets/images/card_decks/uno/cancel-amarillo.png"),
+  verde: require("../../../../assets/images/card_decks/uno/cancel-verde.png"),
+  azul: require("../../../../assets/images/card_decks/uno/cancel-azul.png"), // confirmado nombre con guion
 };
 
 export function getUnoCardImage(card) {

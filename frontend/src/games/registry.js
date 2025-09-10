@@ -16,7 +16,7 @@ export const AVAILABLE_GAMES = {
     maxPlayers: 8,
     assets: {
       previewType: "image",
-      previewImage: require("../images/bingo/logo.png"),
+      previewImage: require("../../assets/images/bingo/logo.png"),
       fit: "cover", // ocupar completamente contenedor
     },
     // Rutas
@@ -51,7 +51,7 @@ export const AVAILABLE_GAMES = {
     disabled: true,
     assets: {
       previewType: "image",
-      previewImage: require("../images/naipes_spanish/1-espada.png"),
+      previewImage: require("../../assets/images/card_decks/spanish/1-espada.png"),
     },
     // Rutas
     routes: {
@@ -81,7 +81,7 @@ export const AVAILABLE_GAMES = {
     },
     assets: {
       previewType: "image",
-      previewImage: require("../images/naipes_spanish/10-copa.png"),
+      previewImage: require("../../assets/images/card_decks/spanish/10-copa.png"),
     },
     config: {
       deck: "spanish",
@@ -103,7 +103,7 @@ export const AVAILABLE_GAMES = {
     },
     assets: {
       previewType: "image",
-      previewImage: require("../images/naipes_uno/1-rojo.png"),
+      previewImage: require("../../assets/images/card_decks/uno/1-rojo.png"),
     },
     config: {
       deck: "uno",

@@ -30,7 +30,10 @@ import {
 } from "../components";
 import CardEffects from "../components/CardEffects";
 import AudioControlPanel from "../components/AudioControlPanel";
-import { useBackgroundMusic } from "../hooks/useBackgroundMusic";
+import {
+  useBackgroundMusic,
+  useSoundEffects,
+} from "../../../shared/hooks/audio";
 import UnoGameSummaryModal from "../components/GameSummaryModal";
 import { SHOW_DEBUG } from "../../../core/config/debug";
 
@@ -79,18 +82,40 @@ export default function UnoGameScreen() {
   const { syncPlayers, getAvatarUrl, syncAvatar } = useAvatarSync();
   const { myAvatar, myUsername, myName } = useMyAvatar();
 
-  // Hook para música de fondo
+  // Hook para música de fondo (genérico con configuración UNO)
   const {
     isPlaying,
     volume,
+    isMuted: isMusicMuted, // Mapear nombre para compatibilidad
     showAudioPanel,
     startMusic,
     stopMusic,
-    toggleMusic,
     changeVolume,
     toggleAudioPanel,
     closeAudioPanel,
-  } = useBackgroundMusic();
+    toggleMute: toggleMusicMute, // Mapear nombre para compatibilidad
+  } = useBackgroundMusic({
+    musicSource: require("../../../../assets/sound/shared/music01.mp3"),
+    volumeMultiplier: 0.4, // Multiplicador específico para UNO
+    storageKey: "audio:music", // Usar la misma clave de storage
+    shouldLoop: true,
+    autoStart: false,
+    logPrefix: "[UNO Audio]",
+  });
+
+  // Hook para efectos de sonido (genérico con configuración UNO)
+  const {
+    playCardSound,
+    playShuffleSound,
+    effectsVolume,
+    isEffectsMuted,
+    changeEffectsVolume,
+    toggleEffectsMute,
+  } = useSoundEffects({
+    storageKey: "audio:effects",
+    volumeMultiplier: 1.0,
+    logPrefix: "[UNO SFX]",
+  });
 
   const [publicState, setPublicState] = useState(initialPublic);
   const [hand, setHand] = useState([]); // cartas privadas
@@ -407,6 +432,10 @@ export default function UnoGameScreen() {
     // Nueva ronda iniciada - actualizar estado
     socket.on("newRoundStarted", (data) => {
       console.log("[UNO][Frontend] newRoundStarted received:", data);
+
+      // Reproducir sonido de barajado al iniciar nueva ronda
+      playShuffleSound();
+
       // Cerrar modal de fin de ronda si está abierto
       setRoundEndVisible(false);
       setRoundEndData(null);
@@ -421,6 +450,10 @@ export default function UnoGameScreen() {
     // Juego iniciado - similar a nueva ronda
     socket.on("gameStarted", (data) => {
       console.log("[UNO][Frontend] gameStarted received:", data);
+
+      // Reproducir sonido de barajado al iniciar partida
+      playShuffleSound();
+
       // Asegurar que se limpie cualquier estado previo
       setRoundEndVisible(false);
       setRoundEndData(null);
@@ -580,7 +613,7 @@ export default function UnoGameScreen() {
     }
   }, [hand.length]);
 
-  // 🔧 Vibración cuando un rival juega una carta
+  // 🔧 Vibración y sonido cuando un rival juega una carta
   const previousCurrentPlayer = useRef(publicState.currentPlayer);
   useEffect(() => {
     // Solo vibrar si el juego ha empezado y hay un cambio de turno
@@ -589,9 +622,10 @@ export default function UnoGameScreen() {
     const currentPlayer = publicState.currentPlayer;
     const prevPlayer = previousCurrentPlayer.current;
 
-    // Si cambió el jugador actual y el anterior no era yo, vibrar
+    // Si cambió el jugador actual y el anterior no era yo, vibrar y reproducir sonido
     if (currentPlayer !== prevPlayer && prevPlayer && prevPlayer !== me) {
       Vibration.vibrate(100); // Vibración corta de 100ms
+      playCardSound(); // Sonido de carta jugada
     }
 
     previousCurrentPlayer.current = currentPlayer;
@@ -749,6 +783,9 @@ export default function UnoGameScreen() {
   const playCard = (card) => {
     if (!isMyTurn) return;
 
+    // Reproducir sonido de carta
+    playCardSound();
+
     // Guardar la carta que se está jugando para usar en animaciones
     setLastPlayedCard(card);
     console.log(
@@ -776,6 +813,9 @@ export default function UnoGameScreen() {
 
   const confirmWildColor = (color) => {
     if (!wildColorModal) return;
+
+    // Reproducir sonido de carta al confirmar color wild
+    playCardSound();
 
     // Buscar la carta wild en la mano para guardarla
     const wildCard = hand.find((card) => card.id === wildColorModal);
@@ -932,7 +972,7 @@ export default function UnoGameScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: "#0d1421" }}>
       {/* Imagen de fondo de UNO - ocupando toda la altura y centrada */}
       <Image
-        source={require("../../../images/uno/UNO-background.png")}
+        source={require("../../../../assets/images/uno/UNO-background.png")}
         style={{
           position: "absolute",
           top: 0,
@@ -1262,9 +1302,14 @@ export default function UnoGameScreen() {
       <AudioControlPanel
         visible={showAudioPanel}
         isPlaying={isPlaying}
-        volume={volume}
-        onToggleMusic={toggleMusic}
-        onVolumeChange={changeVolume}
+        musicVolume={volume}
+        effectsVolume={effectsVolume}
+        isMusicMuted={isMusicMuted}
+        isEffectsMuted={isEffectsMuted}
+        onMusicVolumeChange={changeVolume}
+        onEffectsVolumeChange={changeEffectsVolume}
+        onToggleMusicMute={toggleMusicMute}
+        onToggleEffectsMute={toggleEffectsMute}
         onClose={closeAudioPanel}
       />
     </SafeAreaView>

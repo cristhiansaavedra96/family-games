@@ -11,5 +11,8 @@ export { useSocket } from "./useSocket";
 // Storage management hooks
 export { useStorage } from "./useStorage";
 
+// Audio management hooks
+export { useBackgroundMusic, useSoundEffects } from "./audio";
+
 // Aquí se agregarán más hooks compartidos como:
 // export { useProfile } from './useProfile';

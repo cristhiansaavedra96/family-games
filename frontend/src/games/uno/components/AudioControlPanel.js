@@ -13,67 +13,117 @@ import { Ionicons } from "@expo/vector-icons";
 const AudioControlPanel = ({
   visible,
   isPlaying,
-  volume,
-  onToggleMusic,
-  onVolumeChange,
+  musicVolume,
+  effectsVolume,
+  isMusicMuted,
+  isEffectsMuted,
+  onMusicVolumeChange,
+  onEffectsVolumeChange,
+  onToggleMusicMute,
+  onToggleEffectsMute,
   onClose,
 }) => {
-  const [isDragging, setIsDragging] = React.useState(false);
-  const [tempVolume, setTempVolume] = React.useState(volume); // Volumen temporal durante arrastre
-  const sliderWidth = 120; // Ancho del slider en píxeles
-  const sliderRef = React.useRef(null); // Referencia para medir la posición del slider
-  const startPositionRef = React.useRef({ x: 0, volume: 0 }); // Posición inicial del arrastre
+  const [isDraggingMusic, setIsDraggingMusic] = React.useState(false);
+  const [isDraggingEffects, setIsDraggingEffects] = React.useState(false);
+  const [tempMusicVolume, setTempMusicVolume] = React.useState(musicVolume);
+  const [tempEffectsVolume, setTempEffectsVolume] =
+    React.useState(effectsVolume);
+  const sliderWidth = 100; // Ancho del slider en píxeles (reducido para dos sliders)
+  const musicSliderRef = React.useRef(null);
+  const effectsSliderRef = React.useRef(null);
+  const musicStartRef = React.useRef({ x: 0, volume: 0 });
+  const effectsStartRef = React.useRef({ x: 0, volume: 0 });
 
-  // Actualizar tempVolume cuando cambie el volumen externo (y no estemos arrastrando)
+  // Actualizar tempVolumes cuando cambien los volúmenes externos
   React.useEffect(() => {
-    if (!isDragging) {
-      setTempVolume(volume);
+    if (!isDraggingMusic) {
+      setTempMusicVolume(musicVolume);
     }
-  }, [volume, isDragging]);
+  }, [musicVolume, isDraggingMusic]);
 
-  // Crear el PanResponder para arrastrar en el slider
-  const panResponder = PanResponder.create({
+  React.useEffect(() => {
+    if (!isDraggingEffects) {
+      setTempEffectsVolume(effectsVolume);
+    }
+  }, [effectsVolume, isDraggingEffects]);
+
+  // PanResponder para el slider de música
+  const musicPanResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
 
     onPanResponderGrant: (evt) => {
-      setIsDragging(true);
-
-      // Guardar la posición inicial y el volumen inicial
-      startPositionRef.current = {
+      setIsDraggingMusic(true);
+      musicStartRef.current = {
         x: evt.nativeEvent.pageX,
-        volume: tempVolume,
+        volume: tempMusicVolume,
       };
     },
 
     onPanResponderMove: (evt) => {
-      if (isDragging) {
-        // Calcular el cambio basado en la diferencia desde el punto inicial
-        const deltaX = evt.nativeEvent.pageX - startPositionRef.current.x;
-        const deltaVolume = deltaX / sliderWidth; // Convertir pixels a porcentaje
+      if (isDraggingMusic) {
+        const deltaX = evt.nativeEvent.pageX - musicStartRef.current.x;
+        const deltaVolume = deltaX / sliderWidth;
         const newVolume = Math.max(
           0,
-          Math.min(1, startPositionRef.current.volume + deltaVolume)
+          Math.min(1, musicStartRef.current.volume + deltaVolume)
         );
-        setTempVolume(newVolume);
+        setTempMusicVolume(newVolume);
       }
     },
 
     onPanResponderRelease: () => {
-      setIsDragging(false);
-      // AQUÍ es cuando aplicamos el cambio real
-      onVolumeChange(tempVolume);
+      setIsDraggingMusic(false);
+      onMusicVolumeChange(tempMusicVolume);
     },
 
     onPanResponderTerminate: () => {
-      setIsDragging(false);
-      // En caso de que se cancele el gesto, aplicar el cambio también
-      onVolumeChange(tempVolume);
+      setIsDraggingMusic(false);
+      onMusicVolumeChange(tempMusicVolume);
     },
   });
 
-  // Usar tempVolume durante el arrastre, volume normal en otros casos
-  const displayVolume = isDragging ? tempVolume : volume;
+  // PanResponder para el slider de efectos
+  const effectsPanResponder = PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+
+    onPanResponderGrant: (evt) => {
+      setIsDraggingEffects(true);
+      effectsStartRef.current = {
+        x: evt.nativeEvent.pageX,
+        volume: tempEffectsVolume,
+      };
+    },
+
+    onPanResponderMove: (evt) => {
+      if (isDraggingEffects) {
+        const deltaX = evt.nativeEvent.pageX - effectsStartRef.current.x;
+        const deltaVolume = deltaX / sliderWidth;
+        const newVolume = Math.max(
+          0,
+          Math.min(1, effectsStartRef.current.volume + deltaVolume)
+        );
+        setTempEffectsVolume(newVolume);
+      }
+    },
+
+    onPanResponderRelease: () => {
+      setIsDraggingEffects(false);
+      onEffectsVolumeChange(tempEffectsVolume);
+    },
+
+    onPanResponderTerminate: () => {
+      setIsDraggingEffects(false);
+      onEffectsVolumeChange(tempEffectsVolume);
+    },
+  });
+
+  // Usar volúmenes temporales durante el arrastre
+  const displayMusicVolume = isDraggingMusic ? tempMusicVolume : musicVolume;
+  const displayEffectsVolume = isDraggingEffects
+    ? tempEffectsVolume
+    : effectsVolume;
 
   if (!visible) return null;
 
@@ -90,48 +140,40 @@ const AudioControlPanel = ({
               </TouchableOpacity>
             </View>
 
-            {/* Control de play/pause */}
-            <View style={styles.playControl}>
-              <TouchableOpacity
-                onPress={onToggleMusic}
-                style={[
-                  styles.playButton,
-                  isPlaying && styles.playButtonActive,
-                ]}
-              >
-                <Ionicons
-                  name={isPlaying ? "pause" : "play"}
-                  size={24}
-                  color="#fff"
-                />
-              </TouchableOpacity>
-              <Text style={styles.playText}>
-                {isPlaying ? "Pausar música" : "Reproducir música"}
-              </Text>
-            </View>
-
-            {/* Control de volumen */}
+            {/* Control de volumen de música */}
             <View style={styles.volumeControl}>
               <View style={styles.volumeHeader}>
+                <TouchableOpacity
+                  onPress={onToggleMusicMute}
+                  style={styles.muteButton}
+                >
+                  <Ionicons
+                    name={isMusicMuted ? "volume-mute" : "musical-notes"}
+                    size={16}
+                    color={isMusicMuted ? "#e74c3c" : "#fff"}
+                  />
+                </TouchableOpacity>
                 <Text style={styles.volumeText}>
-                  Volumen: {Math.round(displayVolume * 100)}%
+                  Música: {Math.round(displayMusicVolume * 100)}%
                 </Text>
               </View>
 
-              {/* Slider personalizado con arrastre */}
               <View style={styles.volumeSlider}>
                 <View
-                  ref={sliderRef}
+                  ref={musicSliderRef}
                   style={styles.volumeBarContainer}
-                  {...panResponder.panHandlers}
+                  {...musicPanResponder.panHandlers}
                 >
                   <View style={[styles.volumeBar, { width: sliderWidth }]}>
                     <View
                       style={[
                         styles.volumeFill,
                         {
-                          width: `${displayVolume * 100}%`,
-                          backgroundColor: isDragging ? "#2980b9" : "#3498db",
+                          width: `${displayMusicVolume * 100}%`,
+                          backgroundColor: isDraggingMusic
+                            ? "#2980b9"
+                            : "#3498db",
+                          opacity: isMusicMuted ? 0.3 : 1,
                         },
                       ]}
                     />
@@ -143,10 +185,73 @@ const AudioControlPanel = ({
                             0,
                             Math.min(
                               sliderWidth - 12,
-                              displayVolume * sliderWidth - 6
+                              displayMusicVolume * sliderWidth - 6
                             )
-                          ), // Limitar el thumb dentro del slider
-                          backgroundColor: isDragging ? "#2980b9" : "#3498db",
+                          ),
+                          backgroundColor: isDraggingMusic
+                            ? "#2980b9"
+                            : "#3498db",
+                          opacity: isMusicMuted ? 0.3 : 1,
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* Control de volumen de efectos */}
+            <View style={styles.volumeControl}>
+              <View style={styles.volumeHeader}>
+                <TouchableOpacity
+                  onPress={onToggleEffectsMute}
+                  style={styles.muteButton}
+                >
+                  <Ionicons
+                    name={isEffectsMuted ? "volume-mute" : "flash"}
+                    size={16}
+                    color={isEffectsMuted ? "#e74c3c" : "#fff"}
+                  />
+                </TouchableOpacity>
+                <Text style={styles.volumeText}>
+                  Efectos: {Math.round(displayEffectsVolume * 100)}%
+                </Text>
+              </View>
+
+              <View style={styles.volumeSlider}>
+                <View
+                  ref={effectsSliderRef}
+                  style={styles.volumeBarContainer}
+                  {...effectsPanResponder.panHandlers}
+                >
+                  <View style={[styles.volumeBar, { width: sliderWidth }]}>
+                    <View
+                      style={[
+                        styles.volumeFill,
+                        {
+                          width: `${displayEffectsVolume * 100}%`,
+                          backgroundColor: isDraggingEffects
+                            ? "#27ae60"
+                            : "#2ecc71",
+                          opacity: isEffectsMuted ? 0.3 : 1,
+                        },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.volumeThumb,
+                        {
+                          left: Math.max(
+                            0,
+                            Math.min(
+                              sliderWidth - 12,
+                              displayEffectsVolume * sliderWidth - 6
+                            )
+                          ),
+                          backgroundColor: isDraggingEffects
+                            ? "#27ae60"
+                            : "#2ecc71",
+                          opacity: isEffectsMuted ? 0.3 : 1,
                         },
                       ]}
                     />
@@ -178,7 +283,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(30, 30, 30, 0.95)",
     borderRadius: 12,
     padding: 16,
-    width: 200,
+    width: 220, // Aumentado para acomodar dos sliders
     borderWidth: 1,
     borderColor: "#444",
     shadowColor: "#000",
@@ -204,39 +309,31 @@ const styles = StyleSheet.create({
   closeButton: {
     padding: 4,
   },
-  playControl: {
-    alignItems: "center",
-    marginBottom: 16, // Reducido de 20 a 16
-  },
-  playButton: {
-    backgroundColor: "#555",
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  playButtonActive: {
-    backgroundColor: "#3498db",
-  },
-  playText: {
-    color: "#fff",
-    fontSize: 12,
-    textAlign: "center",
-  },
   volumeControl: {
     width: "100%",
   },
   volumeHeader: {
-    justifyContent: "center",
+    flexDirection: "row",
     alignItems: "center",
     marginBottom: 6, // Reducido de 12 a 6
+    justifyContent: "space-between",
+  },
+  muteButton: {
+    padding: 4,
+    marginRight: 8,
   },
   volumeText: {
     color: "#fff",
-    fontSize: 12,
-    textAlign: "center",
+    fontSize: 11,
+    flex: 1,
+  },
+  volumeControl: {
+    width: "100%",
+    marginBottom: 12, // Espacio entre controles
+  },
+  volumeControl: {
+    width: "100%",
+    marginBottom: 12, // Espacio entre controles
   },
   volumeSlider: {
     justifyContent: "center",

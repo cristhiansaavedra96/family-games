@@ -169,11 +169,11 @@ src/games/bingo/                  # ✅ TODO BINGO AQUÍ
 ├── services/                    # ✅ Preparado para servicios
 └── assets/                      # ✅ Assets específicos
     └── sounds/                  # ✅ Audio files
-        ├── background_music.mp3 # ✅ Movido desde src/sound/bingo/
-        ├── start.mp3           # ✅ Movido desde src/sound/bingo/
-        ├── win.mp3             # ✅ Movido desde src/sound/bingo/
-        ├── select.mp3          # ✅ Movido desde src/sound/bingo/
-        └── logro.mp3           # ✅ Movido desde src/sound/bingo/
+        ├── background_music.ogg # ✅ Movido desde src/sound/bingo/
+        ├── start.ogg           # ✅ Movido desde src/sound/bingo/
+        ├── win.ogg             # ✅ Movido desde src/sound/bingo/
+        ├── select.ogg          # ✅ Movido desde src/sound/bingo/
+        └── logro.ogg           # ✅ Movido desde src/sound/bingo/
 ```
 
 ### 🔧 ROUTING SIMPLIFICADO
